@@ -51,3 +51,8 @@ def test_router_handles_variant_questions() -> None:
     assert report_route.intent == IntentType.REPORT_SUMMARY
     assert report_route.extracted_company == "Tesla"
     assert report_route.extracted_symbol == "TSLA"
+
+    intel_route = router.route(ChatRequest(message="intel最近股价"))
+    assert intel_route.intent == IntentType.ASSET_TREND
+    assert intel_route.extracted_company == "Intel"
+    assert intel_route.extracted_symbol == "INTC"

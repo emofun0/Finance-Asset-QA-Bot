@@ -51,3 +51,26 @@ class LLMProviderCatalog(BaseModel):
 class LLMModelCatalogResponse(BaseModel):
     default_provider: str
     providers: list[LLMProviderCatalog] = Field(default_factory=list)
+
+
+class ChatChartPoint(BaseModel):
+    timestamp: str
+    close: float
+
+
+class ChatChartData(BaseModel):
+    symbol: str
+    trend: str | None = None
+    change_pct: float | None = None
+    points: list[ChatChartPoint] = Field(default_factory=list)
+
+
+class ChatMessagePayload(BaseModel):
+    text: str
+    sources: list[SourceItem] = Field(default_factory=list)
+    chart: ChatChartData | None = None
+
+
+class ChatResponse(BaseModel):
+    request_id: str
+    message: ChatMessagePayload

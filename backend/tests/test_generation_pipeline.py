@@ -21,6 +21,11 @@ class FakeLLMClient(BaseLLMClient):
         assert user_prompt
         return self.result
 
+    def generate_text_stream(self, *, system_prompt: str, user_prompt: str):
+        assert system_prompt
+        assert user_prompt
+        yield ""
+
 
 def build_answer_payload() -> AnswerPayload:
     return AnswerPayload(
@@ -71,6 +76,25 @@ def test_query_rewrite_service_returns_rewritten_query() -> None:
     )
 
     assert rewritten.startswith("NVIDIA NVDA")
+
+
+def test_query_rewrite_service_skips_simple_finance_knowledge() -> None:
+    service = QueryRewriteService(
+        llm_client=FakeLLMClient(
+            QueryRewriteResult(
+                rewritten_query="不应被使用的改写",
+                search_keywords=[],
+                notes=[],
+            )
+        )
+    )
+
+    rewritten = service.rewrite(
+        "什么是市盈率？",
+        RouteDecision(intent=IntentType.FINANCE_KNOWLEDGE, need_rag=True, reason="test"),
+    )
+
+    assert rewritten == "什么是市盈率？"
 
 
 def test_answer_generation_service_replaces_summary_and_sections() -> None:
@@ -165,6 +189,37 @@ def test_answer_generation_service_skips_generation_without_evidence() -> None:
 
     assert result.summary == payload.summary
     assert result.sources == []
+
+
+def test_answer_generation_service_skips_finance_knowledge_answers() -> None:
+    payload = AnswerPayload(
+        question_type=IntentType.FINANCE_KNOWLEDGE,
+        request_message="什么是市盈率？",
+        summary="市盈率通常表示股票价格相对于每股收益的估值倍数。",
+        objective_data={"retrieval_enabled": True, "source_mode": "local_rag", "matched_chunks": 1},
+        analysis=["市盈率常用于衡量市场如何给公司盈利定价。"],
+        sources=[SourceItem(type="glossary", name="财务基础词条", value="https://example.com/glossary")],
+        limitations=["当前版本基于检索片段做抽取式归纳。"],
+        route=RouteDecision(intent=IntentType.FINANCE_KNOWLEDGE, need_rag=True, reason="test"),
+    )
+    service = AnswerGenerationService(
+        llm_client=FakeLLMClient(
+            GeneratedAnswerSections(
+                summary="模型改写后的解释。",
+                analysis=["模型改写后的分析。"],
+                limitations=["模型改写后的限制。"],
+            )
+        )
+    )
+
+    result = service.generate(
+        request_message=payload.request_message,
+        route=payload.route,
+        draft_answer=payload,
+    )
+
+    assert result.summary == payload.summary
+    assert result.analysis == payload.analysis
 
 
 def test_verification_service_forces_insufficient_evidence_for_empty_source_knowledge_answer() -> None:

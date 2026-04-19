@@ -440,12 +440,9 @@ class AssetQAService:
     def _resolve_symbol(self, route: RouteDecision) -> str:
         if route.extracted_symbol:
             return route.extracted_symbol
-        if route.extracted_company == "Alibaba":
-            return "BABA"
-        if route.extracted_company == "Tesla":
-            return "TSLA"
-        if route.extracted_company == "Apple":
-            return "AAPL"
+        profile = find_company_profile(company=route.extracted_company)
+        if profile:
+            return profile.symbol
         raise AppError(
             code="MISSING_SYMBOL",
             message="当前无法识别问题中的资产代码。",

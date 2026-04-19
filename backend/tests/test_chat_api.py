@@ -4,6 +4,7 @@ from app.schemas.domain import IntentType
 from app.services.answer_service import AnswerService
 from app.services.answer_generation_service import AnswerGenerationService
 from app.services.asset_qa_service import AssetQAService
+from app.services.chat_presenter_service import ChatPresenterService
 from app.services.knowledge_qa_service import KnowledgeQAService
 from app.services.router_service import RouterService
 from app.services.verification_service import VerificationService
@@ -101,12 +102,14 @@ class RecordingVerificationService(VerificationService):
 
 
 def build_answer_service() -> AnswerService:
+    asset_qa_service = AssetQAService(market_data_tool=FakeMarketDataTool())
     return AnswerService(
         router_service=RouterService(),
-        asset_qa_service=AssetQAService(market_data_tool=FakeMarketDataTool()),
+        asset_qa_service=asset_qa_service,
         knowledge_qa_service=KnowledgeQAService(retriever=FakeKnowledgeRetriever()),
         answer_generation_service=AnswerGenerationService(),
         verification_service=VerificationService(),
+        chat_presenter_service=ChatPresenterService(asset_qa_service=asset_qa_service),
     )
 
 
@@ -131,12 +134,14 @@ def test_answer_service_returns_knowledge_stub() -> None:
 
 
 def test_answer_service_skips_generation_and_verification_for_asset_answers() -> None:
+    asset_qa_service = AssetQAService(market_data_tool=FakeMarketDataTool())
     service = AnswerService(
         router_service=RouterService(),
-        asset_qa_service=AssetQAService(market_data_tool=FakeMarketDataTool()),
+        asset_qa_service=asset_qa_service,
         knowledge_qa_service=KnowledgeQAService(retriever=FakeKnowledgeRetriever()),
         answer_generation_service=FailIfCalledAnswerGenerationService(),
         verification_service=FailIfCalledVerificationService(),
+        chat_presenter_service=ChatPresenterService(asset_qa_service=asset_qa_service),
     )
 
     response = service.answer(ChatRequest(message="阿里巴巴当前股价是多少？"))
@@ -148,12 +153,14 @@ def test_answer_service_skips_generation_and_verification_for_asset_answers() ->
 def test_answer_service_runs_generation_and_verification_for_knowledge_answers() -> None:
     generation_service = RecordingAnswerGenerationService()
     verification_service = RecordingVerificationService()
+    asset_qa_service = AssetQAService(market_data_tool=FakeMarketDataTool())
     service = AnswerService(
         router_service=RouterService(),
-        asset_qa_service=AssetQAService(market_data_tool=FakeMarketDataTool()),
+        asset_qa_service=asset_qa_service,
         knowledge_qa_service=KnowledgeQAService(retriever=FakeKnowledgeRetriever()),
         answer_generation_service=generation_service,
         verification_service=verification_service,
+        chat_presenter_service=ChatPresenterService(asset_qa_service=asset_qa_service),
     )
 
     response = service.answer(ChatRequest(message="什么是市盈率？"))
@@ -163,3 +170,16 @@ def test_answer_service_runs_generation_and_verification_for_knowledge_answers()
     assert response.question_type == IntentType.FINANCE_KNOWLEDGE
     assert response.summary == "生成阶段已处理摘要。"
     assert response.limitations == ["校验阶段已处理限制。"]
+
+
+def test_chat_presenter_only_keeps_web_sources() -> None:
+    presenter = ChatPresenterService(asset_qa_service=AssetQAService(market_data_tool=FakeMarketDataTool()))
+    payload = build_answer_service().answer(ChatRequest(message="什么是市盈率？"))
+    payload.sources = [
+        payload.sources[0].model_copy(update={"name": "本地词条", "value": "manual://zh-core-finance-concepts"}),
+        payload.sources[0].model_copy(update={"name": "证监会文章", "value": "https://www.csrc.gov.cn/example"}),
+    ]
+
+    message = presenter.build_message(payload)
+
+    assert [source.name for source in message.sources] == ["证监会文章"]

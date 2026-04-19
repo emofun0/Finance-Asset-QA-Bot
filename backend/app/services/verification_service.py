@@ -47,6 +47,11 @@ class VerificationService:
         trace_event("verification.output", result)
         return self._apply_deterministic_checks(patched)
 
+    def normalize(self, answer: AnswerPayload) -> AnswerPayload:
+        normalized = self._apply_deterministic_checks(answer)
+        trace_event("verification.normalized_only", normalized)
+        return normalized
+
     def _apply_deterministic_checks(self, answer: AnswerPayload) -> AnswerPayload:
         normalized = answer.model_copy(deep=True)
         normalized.summary = normalized.summary.strip()

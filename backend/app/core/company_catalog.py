@@ -105,6 +105,13 @@ _COMPANY_CATALOG = (
         official_domains=("apple.com",),
     ),
     CompanyProfile(
+        canonical_name="Intel",
+        symbol="INTC",
+        country_group="usa",
+        aliases=("英特尔", "intel", "intc"),
+        official_domains=("intel.com",),
+    ),
+    CompanyProfile(
         canonical_name="Microsoft",
         symbol="MSFT",
         country_group="usa",

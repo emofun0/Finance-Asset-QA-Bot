@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import json
-from typing import TypeVar
+from typing import Iterator, TypeVar
 
 import requests
 from pydantic import BaseModel
@@ -34,6 +34,15 @@ class BaseLLMClient(ABC):
     ) -> TModel:
         raise NotImplementedError
 
+    @abstractmethod
+    def generate_text_stream(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> Iterator[str]:
+        raise NotImplementedError
+
 
 class NullLLMClient(BaseLLMClient):
     def is_enabled(self) -> bool:
@@ -46,6 +55,14 @@ class NullLLMClient(BaseLLMClient):
         user_prompt: str,
         schema: type[TModel],
     ) -> TModel:
+        raise RuntimeError("LLM client is not enabled.")
+
+    def generate_text_stream(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> Iterator[str]:
         raise RuntimeError("LLM client is not enabled.")
 
 
@@ -88,6 +105,36 @@ class OllamaLLMClient(BaseLLMClient):
         response.raise_for_status()
         raw_text = response.json()["message"]["content"]
         return parse_structured_output(raw_text, schema)
+
+    def generate_text_stream(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> Iterator[str]:
+        with requests.post(
+            f"{self.base_url}/api/chat",
+            json={
+                "model": self.model,
+                "stream": True,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "options": {"temperature": 0},
+            },
+            timeout=self.timeout_seconds,
+            stream=True,
+        ) as response:
+            response.raise_for_status()
+            for line in response.iter_lines(decode_unicode=True):
+                if not line:
+                    continue
+                payload = json.loads(line)
+                message = payload.get("message") or {}
+                content = str(message.get("content") or "")
+                if content:
+                    yield content
 
 
 class OpenAILLMClient(BaseLLMClient):
@@ -135,6 +182,50 @@ class OpenAILLMClient(BaseLLMClient):
         if response.output_parsed is None:
             raise RuntimeError("OpenAI structured response parsing returned no parsed output.")
         return response.output_parsed
+
+    def generate_text_stream(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> Iterator[str]:
+        if not self.api_key or not self.model:
+            raise RuntimeError("OpenAI client is not configured.")
+
+        with requests.post(
+            f"{settings.openai_base_url.rstrip('/')}/responses",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.model,
+                "instructions": system_prompt,
+                "input": user_prompt,
+                "stream": True,
+                "store": False,
+                "reasoning": {"effort": self.reasoning_effort},
+            },
+            timeout=self.timeout_seconds,
+            stream=True,
+        ) as response:
+            response.raise_for_status()
+            for raw_line in response.iter_lines(decode_unicode=True):
+                if not raw_line or not raw_line.startswith("data: "):
+                    continue
+                data = raw_line[6:].strip()
+                if not data or data == "[DONE]":
+                    continue
+                payload = json.loads(data)
+                event_type = str(payload.get("type") or "")
+                if event_type == "response.output_text.delta":
+                    delta = str(payload.get("delta") or "")
+                    if delta:
+                        yield delta
+                elif event_type == "response.refusal.delta":
+                    delta = str(payload.get("delta") or "")
+                    if delta:
+                        yield delta
 
 
 def build_llm_client(provider: str | None = None, model: str | None = None) -> BaseLLMClient:

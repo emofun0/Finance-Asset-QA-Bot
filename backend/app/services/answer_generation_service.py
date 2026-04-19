@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from typing import Iterator
+
 from app.core.config import settings
 from app.llm.client import BaseLLMClient, NullLLMClient
 from app.llm.contracts import GeneratedAnswerSections
-from app.llm.prompts import build_answer_generation_prompt
+from app.llm.prompts import build_answer_generation_prompt, build_chat_response_prompt
 from app.observability.request_trace import trace_event
 from app.schemas.domain import IntentType
 from app.schemas.domain import RouteDecision
@@ -52,6 +54,46 @@ class AnswerGenerationService:
         trace_event("answer_generation.output", generated)
         return answer
 
+    def stream_chat_text(
+        self,
+        request_message: str,
+        route: RouteDecision,
+        draft_answer: AnswerPayload,
+        fallback_text: str,
+    ) -> Iterator[str]:
+        if not settings.llm_enable_generation or not self.llm_client.is_enabled():
+            trace_event("answer_generation.stream_skipped", {"reason": "llm_disabled"})
+            yield fallback_text
+            return
+
+        if self._should_skip_generation(draft_answer):
+            trace_event("answer_generation.stream_skipped", {"reason": "insufficient_evidence"})
+            yield fallback_text
+            return
+
+        system_prompt, user_prompt = build_chat_response_prompt(
+            request_message=request_message,
+            route=route,
+            draft_answer=draft_answer,
+        )
+        trace_event("answer_generation.stream_prompt", {"system_prompt": system_prompt, "user_prompt": user_prompt})
+
+        try:
+            emitted = False
+            for chunk in self.llm_client.generate_text_stream(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            ):
+                if not chunk:
+                    continue
+                emitted = True
+                yield chunk
+            if not emitted:
+                yield fallback_text
+        except Exception as exc:
+            trace_event("answer_generation.stream_error", {"type": exc.__class__.__name__, "message": str(exc)})
+            raise
+
     def _should_skip_generation(self, draft_answer: AnswerPayload) -> bool:
         source_mode = str(draft_answer.objective_data.get("source_mode") or "").strip().lower()
         question_type = draft_answer.question_type
@@ -67,6 +109,8 @@ class AnswerGenerationService:
         }
 
         if is_asset_answer:
+            return True
+        if question_type_value == IntentType.FINANCE_KNOWLEDGE.value:
             return True
         if source_mode == "not_found":
             return True

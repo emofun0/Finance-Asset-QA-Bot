@@ -66,6 +66,32 @@ def build_answer_generation_prompt(
     return system_prompt, user_prompt
 
 
+def build_chat_response_prompt(
+    request_message: str,
+    route: RouteDecision,
+    draft_answer: AnswerPayload,
+) -> tuple[str, str]:
+    system_prompt = (
+        "你是金融资产问答助手。"
+        "你只能基于给定草稿中的事实、来源边界和限制来回答，不得编造数字、时间、结论或额外来源。"
+        "你要直接输出给用户看的最终正文，不要输出 JSON，不要输出标题，不要解释你的思考过程。"
+        "如果证据不足，必须明确说依据不足，不能用常识补充。"
+    )
+    user_prompt = (
+        "请把下面的金融问答草稿整理成一条适合聊天界面的最终回答。\n"
+        "要求：\n"
+        "1. 直接输出正文。\n"
+        "2. 先给出简洁结论，再给出 2-4 条有依据的要点。\n"
+        "3. 如有必要，用“补充说明”引出边界或限制，但不要重复空话。\n"
+        "4. 不要出现“summary”“analysis”“limitations”“objective_data”等字段名。\n"
+        "5. 不要添加草稿里没有的新事实。\n"
+        f"用户问题：{request_message}\n"
+        f"路由：{json.dumps(route.model_dump(mode='json'), ensure_ascii=False)}\n"
+        f"草稿回答：{json.dumps(draft_answer.model_dump(mode='json'), ensure_ascii=False, indent=2)}\n"
+    )
+    return system_prompt, user_prompt
+
+
 def build_verification_prompt(answer_payload: AnswerPayload) -> tuple[str, str]:
     system_prompt = (
         "你是金融问答系统中的结构校验器。"

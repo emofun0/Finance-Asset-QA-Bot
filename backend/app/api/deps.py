@@ -7,6 +7,7 @@ from app.rag.retriever import KnowledgeRetriever
 from app.services.answer_service import AnswerService
 from app.services.answer_generation_service import AnswerGenerationService
 from app.services.asset_qa_service import AssetQAService
+from app.services.chat_presenter_service import ChatPresenterService
 from app.services.knowledge_qa_service import KnowledgeQAService
 from app.services.llm_catalog_service import LLMCatalogService
 from app.services.query_rewrite_service import QueryRewriteService
@@ -40,12 +41,14 @@ def get_knowledge_qa_service(provider: str | None = None, model: str | None = No
 
 
 def get_answer_service(provider: str | None = None, model: str | None = None) -> AnswerService:
+    asset_qa_service = get_asset_qa_service()
     return AnswerService(
         router_service=get_router_service(provider=provider, model=model),
-        asset_qa_service=get_asset_qa_service(),
+        asset_qa_service=asset_qa_service,
         knowledge_qa_service=get_knowledge_qa_service(provider=provider, model=model),
         answer_generation_service=get_answer_generation_service(provider=provider, model=model),
         verification_service=get_verification_service(provider=provider, model=model),
+        chat_presenter_service=get_chat_presenter_service(asset_qa_service=asset_qa_service),
     )
 
 
@@ -83,3 +86,7 @@ def get_verification_service(provider: str | None = None, model: str | None = No
 
 def get_llm_catalog_service() -> LLMCatalogService:
     return LLMCatalogService()
+
+
+def get_chat_presenter_service(asset_qa_service: AssetQAService | None = None) -> ChatPresenterService:
+    return ChatPresenterService(asset_qa_service=asset_qa_service or get_asset_qa_service())
