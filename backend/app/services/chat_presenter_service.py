@@ -23,11 +23,11 @@ class ChatPresenterService:
 
         analysis = [item.strip() for item in answer.analysis if item.strip()]
         if analysis:
-            blocks.append("\n".join(f"- {item}" for item in analysis))
+            blocks.append("要点：\n" + "\n".join(f"{index}. {item}" for index, item in enumerate(analysis, start=1)))
 
         limitations = [item.strip() for item in answer.limitations if item.strip()]
         if limitations:
-            blocks.append("补充说明：\n" + "\n".join(f"- {item}" for item in limitations))
+            blocks.append("补充说明：\n" + "\n".join(f"{index}. {item}" for index, item in enumerate(limitations, start=1)))
 
         return "\n\n".join(blocks).strip() or "当前未生成回答。"
 

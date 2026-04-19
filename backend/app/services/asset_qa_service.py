@@ -4,6 +4,9 @@ from datetime import UTC, datetime, timedelta
 
 from app.core.company_catalog import find_company_profile
 from app.core.errors import AppError
+from app.llm.client import BaseLLMClient, NullLLMClient
+from app.llm.contracts import EventObservationResult
+from app.llm.prompts import build_event_observation_prompt
 from app.observability.request_trace import trace_event
 from app.schemas.domain import IntentType, RouteDecision
 from app.schemas.request import ChatRequest
@@ -19,9 +22,11 @@ class AssetQAService:
         self,
         market_data_tool: MarketDataTool,
         web_search_tool: OfficialWebSearchTool | None = None,
+        llm_client: BaseLLMClient | None = None,
     ) -> None:
         self.market_data_tool = market_data_tool
         self.web_search_tool = web_search_tool
+        self.llm_client = llm_client or NullLLMClient()
 
     def answer(self, request: ChatRequest, route: RouteDecision) -> AnswerPayload:
         symbol = self._resolve_symbol(route)
@@ -242,7 +247,15 @@ class AssetQAService:
             )
 
         analysis = [self._build_event_move_line(event_window)]
-        analysis.extend(self._extract_event_observations(event_results))
+        analysis.extend(
+            self._extract_event_observations(
+                request_message=request.message,
+                symbol=symbol,
+                company=route.extracted_company or (profile.canonical_name if profile else None),
+                event_window=event_window,
+                results=event_results,
+            )
+        )
         summary = self._build_event_summary(symbol, route.event_date, event_window, found_sources=True)
 
         return AnswerPayload(
@@ -330,7 +343,7 @@ class AssetQAService:
 
         if found_sources:
             return (
-                f"{symbol} 最近 {event_window.get('time_range_days') or '一段时间'} 的价格异动已有候选事件线索，"
+                f"{symbol} 最近 {event_window.get('time_range_days') or '一段时间'} 天的价格异动已有候选事件线索，"
                 "系统基于价格窗口和网页检索做了归因整理。"
             )
         return (
@@ -349,13 +362,79 @@ class AssetQAService:
             f"区间涨跌幅约 {event_window['event_change_pct']:.2f}%。"
         )
 
-    def _extract_event_observations(self, results: list) -> list[str]:
+    def _extract_event_observations(
+        self,
+        *,
+        request_message: str,
+        symbol: str,
+        company: str | None,
+        event_window: dict,
+        results: list,
+    ) -> list[str]:
+        llm_observations = self._extract_event_observations_with_llm(
+            request_message=request_message,
+            symbol=symbol,
+            company=company,
+            event_window=event_window,
+            results=results,
+        )
+        if llm_observations:
+            return llm_observations
+
         observations: list[str] = []
         for result in results[:3]:
-            title = str(result.metadata.get("title") or "候选事件")
-            excerpt = self._trim_excerpt(result.content)
-            observations.append(f"{title}：{excerpt}")
+            observations.append(self._summarize_event_result(result))
         return observations
+
+    def _extract_event_observations_with_llm(
+        self,
+        *,
+        request_message: str,
+        symbol: str,
+        company: str | None,
+        event_window: dict,
+        results: list,
+    ) -> list[str]:
+        if not self.llm_client.is_enabled() or not results:
+            return []
+
+        prompt_results = [
+            {
+                "title": str(result.metadata.get("title") or ""),
+                "source_name": str(result.metadata.get("source_name") or ""),
+                "url": str(result.metadata.get("url") or ""),
+                "excerpt": self._trim_excerpt(str(result.content or ""), limit=240),
+            }
+            for result in results[:3]
+        ]
+        system_prompt, user_prompt = build_event_observation_prompt(
+            request_message=request_message,
+            symbol=symbol,
+            company=company,
+            event_window=event_window,
+            event_results=prompt_results,
+        )
+        trace_event(
+            "asset.event_observation_prompt",
+            {
+                "symbol": symbol,
+                "company": company,
+                "event_results": prompt_results,
+            },
+        )
+        try:
+            parsed = self.llm_client.generate_structured(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                schema=EventObservationResult,
+            )
+        except Exception as exc:
+            trace_event("asset.event_observation_error", {"type": exc.__class__.__name__, "message": str(exc)})
+            return []
+
+        observations = [item.strip() for item in parsed.observations if item.strip()]
+        trace_event("asset.event_observation_output", {"observations": observations})
+        return observations[:3]
 
     def _to_event_sources(self, results: list) -> list[SourceItem]:
         return [
@@ -506,6 +585,48 @@ class AssetQAService:
         if len(compact) <= limit:
             return compact
         return f"{compact[: limit - 1]}…"
+
+    def _summarize_event_result(self, result) -> str:
+        title = str(result.metadata.get("title") or "候选事件").strip()
+        source_name = str(result.metadata.get("source_name") or "外部来源").strip()
+        content = self._trim_excerpt(str(result.content or ""), limit=120)
+        lowered = f"{title} {content}".lower()
+
+        cues: list[str] = []
+        if "earnings" in lowered or "quarterly" in lowered or "results" in lowered:
+            cues.append("财报或业绩披露")
+        if "guidance" in lowered or "outlook" in lowered:
+            cues.append("公司指引改善")
+        if "investment" in lowered or "investments" in lowered or "capex" in lowered:
+            cues.append("投资推进")
+        if "cost cut" in lowered or "cost cuts" in lowered:
+            cues.append("成本削减")
+        if "profit beat" in lowered or "beat expectations" in lowered or "profit" in lowered:
+            cues.append("盈利表现超预期")
+        if "cloud" in lowered:
+            cues.append("云业务需求改善")
+        if "pulls back" in lowered or "pullback" in lowered:
+            cues.append("业绩后股价回落")
+
+        unique_cues: list[str] = []
+        for cue in cues:
+            if cue not in unique_cues:
+                unique_cues.append(cue)
+
+        if unique_cues:
+            return f"{source_name} 的相关报道提到，股价异动可能与" + "、".join(unique_cues[:3]) + "有关。"
+
+        if self._contains_mostly_ascii(title):
+            return f"{source_name} 提供了一条相关事件线索，但标题与摘录主要为英文，建议结合原文进一步核实。"
+
+        return f"{source_name} 提到：{self._trim_excerpt(title, limit=80)}"
+
+    def _contains_mostly_ascii(self, text: str) -> bool:
+        stripped = text.strip()
+        if not stripped:
+            return False
+        ascii_chars = sum(1 for char in stripped if ord(char) < 128)
+        return ascii_chars / len(stripped) >= 0.8
 
     def _event_has_significant_move(self, event_window: dict) -> bool:
         return abs(float(event_window.get("event_change_pct") or 0.0)) >= self._event_move_threshold_pct

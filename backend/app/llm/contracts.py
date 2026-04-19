@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.schemas.domain import IntentType
@@ -35,3 +37,27 @@ class VerificationResult(BaseModel):
     corrected_summary: str | None = Field(default=None, max_length=400)
     corrected_analysis: list[str] = Field(default_factory=list, max_length=4)
     corrected_limitations: list[str] = Field(default_factory=list, max_length=4)
+
+
+class AgentPlanningResult(BaseModel):
+    tool_name: Literal[
+        "asset_price",
+        "asset_trend",
+        "asset_event_analysis",
+        "finance_knowledge",
+        "report_summary",
+        "direct_response",
+    ]
+    thought: str = Field(min_length=1, max_length=240)
+    company: str | None = Field(default=None, max_length=120)
+    symbol: str | None = Field(default=None, max_length=16)
+    time_length: int | None = Field(default=None, ge=1)
+    time_unit: Literal["day", "week", "month", "year"] | None = None
+    event_date: str | None = Field(default=None, max_length=32)
+    rewritten_query: str | None = Field(default=None, max_length=500)
+    direct_response: str | None = Field(default=None, max_length=500)
+    reason: str = Field(default="", max_length=240)
+
+
+class EventObservationResult(BaseModel):
+    observations: list[str] = Field(default_factory=list, max_length=3)

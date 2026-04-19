@@ -28,6 +28,7 @@ interface ConversationMessage {
   chart: ChatMessagePayload["chart"];
   requestId?: string;
   status: "streaming" | "done" | "error";
+  transient?: boolean;
 }
 
 function createId(prefix: string): string {
@@ -181,6 +182,7 @@ function App() {
       sources: [],
       chart: null,
       status: "streaming",
+      transient: true,
     };
 
     setMessages((current) => [...current, userMessage, assistantPlaceholder]);
@@ -207,7 +209,35 @@ function App() {
             if (event.type === "delta") {
               updateAssistantMessage(assistantMessageId, (current) => ({
                 ...current,
-                text: current.text + event.text,
+                text: current.transient ? event.text : current.text + event.text,
+                transient: false,
+              }));
+              return;
+            }
+
+            if (event.type === "status") {
+              updateAssistantMessage(assistantMessageId, (current) => ({
+                ...current,
+                text: event.text,
+                transient: true,
+              }));
+              return;
+            }
+
+            if (event.type === "thought") {
+              updateAssistantMessage(assistantMessageId, (current) => ({
+                ...current,
+                text: `正在思考：${event.text}`,
+                transient: true,
+              }));
+              return;
+            }
+
+            if (event.type === "tool") {
+              updateAssistantMessage(assistantMessageId, (current) => ({
+                ...current,
+                text: `正在执行：${event.tool_name}\n${event.summary}`,
+                transient: true,
               }));
               return;
             }
@@ -220,6 +250,7 @@ function App() {
                 chart: event.message.chart,
                 requestId: event.request_id,
                 status: "done",
+                transient: false,
               }));
               return;
             }

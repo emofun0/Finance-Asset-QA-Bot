@@ -69,6 +69,15 @@ function parseSSEChunk(chunk: string): ChatStreamEvent[] {
     const payload = JSON.parse(dataLines.join("\n")) as ChatResponse | ChatStreamEvent;
     if (eventName === "meta") {
       events.push({ type: "meta", request_id: (payload as { request_id: string }).request_id });
+    } else if (eventName === "status") {
+      const statusPayload = payload as { text: string };
+      events.push({ type: "status", text: statusPayload.text });
+    } else if (eventName === "thought") {
+      const thoughtPayload = payload as { text: string; tool_name?: string };
+      events.push({ type: "thought", text: thoughtPayload.text, tool_name: thoughtPayload.tool_name });
+    } else if (eventName === "tool") {
+      const toolPayload = payload as { tool_name: string; summary: string };
+      events.push({ type: "tool", tool_name: toolPayload.tool_name, summary: toolPayload.summary });
     } else if (eventName === "delta") {
       events.push({ type: "delta", text: (payload as { text: string }).text });
     } else if (eventName === "done") {

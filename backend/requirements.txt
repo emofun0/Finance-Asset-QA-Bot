@@ -10,3 +10,7 @@ pypdf
 scikit-learn
 ddgs
 openai
+langchain
+langgraph
+langchain-openai
+langchain-ollama

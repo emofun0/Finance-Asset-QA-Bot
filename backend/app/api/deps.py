@@ -5,6 +5,7 @@ from app.llm.client import BaseLLMClient, build_llm_client
 from app.rag.ingest import KnowledgeBaseBuilder
 from app.rag.retriever import KnowledgeRetriever
 from app.services.answer_service import AnswerService
+from app.services.agent_service import AgentService
 from app.services.answer_generation_service import AnswerGenerationService
 from app.services.asset_qa_service import AssetQAService
 from app.services.chat_presenter_service import ChatPresenterService
@@ -25,10 +26,11 @@ def get_router_service(provider: str | None = None, model: str | None = None) ->
     return RouterService(llm_client=get_llm_client(provider=provider, model=model))
 
 
-def get_asset_qa_service() -> AssetQAService:
+def get_asset_qa_service(provider: str | None = None, model: str | None = None) -> AssetQAService:
     return AssetQAService(
         market_data_tool=get_market_data_tool(),
         web_search_tool=get_web_search_tool(),
+        llm_client=get_llm_client(provider=provider, model=model),
     )
 
 
@@ -41,7 +43,7 @@ def get_knowledge_qa_service(provider: str | None = None, model: str | None = No
 
 
 def get_answer_service(provider: str | None = None, model: str | None = None) -> AnswerService:
-    asset_qa_service = get_asset_qa_service()
+    asset_qa_service = get_asset_qa_service(provider=provider, model=model)
     return AnswerService(
         router_service=get_router_service(provider=provider, model=model),
         asset_qa_service=asset_qa_service,
@@ -49,6 +51,28 @@ def get_answer_service(provider: str | None = None, model: str | None = None) ->
         answer_generation_service=get_answer_generation_service(provider=provider, model=model),
         verification_service=get_verification_service(provider=provider, model=model),
         chat_presenter_service=get_chat_presenter_service(asset_qa_service=asset_qa_service),
+    )
+
+
+def get_agent_service(provider: str | None = None, model: str | None = None) -> AgentService:
+    asset_qa_service = get_asset_qa_service(provider=provider, model=model)
+    knowledge_qa_service = get_knowledge_qa_service(provider=provider, model=model)
+    chat_presenter_service = get_chat_presenter_service(asset_qa_service=asset_qa_service)
+    fallback_answer_service = AnswerService(
+        router_service=get_router_service(provider=provider, model=model),
+        asset_qa_service=asset_qa_service,
+        knowledge_qa_service=knowledge_qa_service,
+        answer_generation_service=get_answer_generation_service(provider=provider, model=model),
+        verification_service=get_verification_service(provider=provider, model=model),
+        chat_presenter_service=chat_presenter_service,
+    )
+    return AgentService(
+        provider=provider,
+        model=model,
+        asset_qa_service=asset_qa_service,
+        knowledge_qa_service=knowledge_qa_service,
+        chat_presenter_service=chat_presenter_service,
+        fallback_answer_service=fallback_answer_service,
     )
 
 

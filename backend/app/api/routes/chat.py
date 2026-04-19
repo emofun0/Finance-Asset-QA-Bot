@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from app.observability.request_trace import request_trace
 from app.core.errors import AppError
-from app.api.deps import get_answer_service
+from app.api.deps import get_agent_service
 from app.schemas.request import ChatRequest
 from app.schemas.response import ChatResponse, StandardResponse
 
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1")
 def chat(request: ChatRequest) -> StandardResponse:
     request_id = str(uuid4())
     llm_selection = request.llm
-    answer_service = get_answer_service(
+    agent_service = get_agent_service(
         provider=llm_selection.provider if llm_selection else None,
         model=llm_selection.model if llm_selection else None,
     )
@@ -26,7 +26,7 @@ def chat(request: ChatRequest) -> StandardResponse:
         response = StandardResponse(
             request_id=request_id,
             success=True,
-            data=answer_service.answer(request),
+            data=agent_service.answer(request),
         )
         trace.finalize(status="success", response=response)
         return response
@@ -53,7 +53,7 @@ def _chunk_text(text: str, chunk_size: int = 24) -> list[str]:
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
     request_id = str(uuid4())
     llm_selection = request.llm
-    answer_service = get_answer_service(
+    agent_service = get_agent_service(
         provider=llm_selection.provider if llm_selection else None,
         model=llm_selection.model if llm_selection else None,
     )
@@ -62,7 +62,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
         yield _sse("meta", {"request_id": request_id})
         with request_trace(request_id, request.model_dump(mode="json"), "/api/v1/chat/stream") as trace:
             try:
-                stream_plan = answer_service.stream_chat(request)
+                stream_events = agent_service.stream_chat(request)
             except AppError as exc:
                 error_payload = {
                     "request_id": request_id,
@@ -86,12 +86,28 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
 
             collected_chunks: list[str] = []
             try:
-                for chunk in stream_plan.chunks:
-                    if not chunk:
+                final_message_payload: dict | None = None
+                for event in stream_events:
+                    if event.type == "status":
+                        yield _sse("status", event.payload)
+                        await asyncio.sleep(0.01)
                         continue
-                    collected_chunks.append(chunk)
-                    yield _sse("delta", {"text": chunk})
-                    await asyncio.sleep(0.01)
+                    if event.type == "thought":
+                        yield _sse("thought", event.payload)
+                        await asyncio.sleep(0.01)
+                        continue
+                    if event.type == "tool":
+                        yield _sse("tool", event.payload)
+                        await asyncio.sleep(0.01)
+                        continue
+                    if event.type == "final":
+                        final_message_payload = event.payload
+                        for chunk in _chunk_text(str(final_message_payload.get("text") or "")):
+                            collected_chunks.append(chunk)
+                            yield _sse("delta", {"text": chunk})
+                            await asyncio.sleep(0.01)
+                if final_message_payload is None:
+                    raise RuntimeError("Agent stream returned no final message.")
             except AppError as exc:
                 error_payload = {
                     "request_id": request_id,
@@ -113,12 +129,14 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 yield _sse("error", error_payload)
                 return
 
-            final_text = "".join(collected_chunks).strip() or stream_plan.fallback_text
-            message = answer_service.chat_presenter_service.build_message(
-                stream_plan.answer,
-                text_override=final_text,
+            final_text = "".join(collected_chunks).strip() or str(final_message_payload.get("text") or "")
+            response = ChatResponse(
+                request_id=request_id,
+                message={
+                    **final_message_payload,
+                    "text": final_text,
+                },
             )
-            response = ChatResponse(request_id=request_id, message=message)
             trace.finalize(status="success", response=response)
             yield _sse("done", response.model_dump(mode="json"))
 
