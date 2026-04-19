@@ -69,7 +69,7 @@ class KnowledgeQAService:
 
     def _retrieve(self, request: ChatRequest, route: RouteDecision) -> list[RetrievalResult]:
         message = request.message
-        rewritten_message = str(request.metadata.get("retrieval_query") or "").strip() or message
+        rewritten_message = self._rewrite_query(request, route)
         preferred_language = "zh" if self._contains_chinese(message) else None
         search_backend = str(request.metadata.get("search_backend") or "rag").strip().lower()
         trace_event(
