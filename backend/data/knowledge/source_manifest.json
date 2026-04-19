@@ -1,0 +1,200 @@
+[
+  {
+    "doc_id": "zh_financial_analysis_csrc",
+    "title": "读懂定期报告｜财务分析的基本内容是什么",
+    "url": "https://www.csrc.gov.cn/ningxia/c105510/c5994748/content.shtml",
+    "source_name": "中国证监会",
+    "language": "zh",
+    "doc_type": "knowledge_article",
+    "published_at": "2022-10-14"
+  },
+  {
+    "doc_id": "en_investor_glossary",
+    "title": "Investor.gov Glossary",
+    "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary",
+    "source_name": "Investor.gov",
+    "language": "en",
+    "doc_type": "glossary"
+  },
+  {
+    "doc_id": "zh_core_finance_concepts",
+    "title": "金融核心概念术语卡",
+    "url": "manual://zh-core-finance-concepts",
+    "source_name": "Project Curated Knowledge",
+    "language": "zh",
+    "doc_type": "glossary",
+    "inline_text": "市盈率，也常写作 PE ratio 或 Price-to-Earnings Ratio，表示股票价格与每股收益之间的倍数关系。市盈率通常用来衡量市场愿意为公司当前盈利支付多高的价格。市盈率较高，往往意味着市场对未来增长抱有更高预期，但也可能意味着估值更贵。收入又称营业收入，表示企业在一定期间内通过销售商品或提供服务取得的总流入，是利润计算的起点。净利润是企业扣除营业成本、期间费用、利息、税费以及其他损益项目后最终剩余的利润，能够反映企业真正赚到多少。收入和净利润的区别在于，收入描述的是规模，净利润描述的是在扣除各项成本费用后的最终盈利结果。一家公司收入增长，不代表净利润一定同步增长，因为成本率、费用率、税负和一次性损益都可能发生变化。"
+  },
+  {
+    "doc_id": "en_core_finance_terms",
+    "title": "Core Finance Terms Reference",
+    "url": "manual://en-core-finance-terms",
+    "source_name": "Project Curated Knowledge",
+    "language": "en",
+    "doc_type": "glossary",
+    "inline_text": "The price-to-earnings ratio, also called the PE ratio, compares a company's share price with its earnings per share and is often used as a shorthand measure of valuation. Revenue refers to the gross inflow a company earns from selling goods or providing services before most costs are deducted. Net income, or net profit, measures what remains after operating costs, interest, taxes, and other gains or losses are recognized. Revenue shows business scale, while net income shows bottom-line profitability. A company can grow revenue while net income declines if margins weaken, operating expenses rise, or one-off charges increase."
+  },
+  {
+    "doc_id": "tencent_2025_annual_report",
+    "title": "腾讯 2025 年度报告",
+    "url": "https://static.www.tencent.com/uploads/2026/04/09/5c38a9ec3c5695da42c1534d63e4be0b.pdf",
+    "source_name": "Tencent Investors",
+    "language": "zh",
+    "doc_type": "annual_report",
+    "company": "Tencent",
+    "symbol": "0700.HK"
+  },
+  {
+    "doc_id": "tencent_2025_interim_report",
+    "title": "腾讯 2025 中期报告",
+    "url": "https://static.www.tencent.com/uploads/2025/08/26/00175ef813605d01873b4a533131aed0.pdf",
+    "source_name": "Tencent Investors",
+    "language": "zh",
+    "doc_type": "interim_report",
+    "company": "Tencent",
+    "symbol": "0700.HK"
+  },
+  {
+    "doc_id": "tencent_2025_results_release",
+    "title": "腾讯公布二零二五年度及第四季业绩",
+    "url": "https://static.www.tencent.com/uploads/2026/03/18/559e5d480a4411165e6c7367d61fefbd.pdf",
+    "source_name": "Tencent Investors",
+    "language": "zh",
+    "doc_type": "earnings_release",
+    "company": "Tencent",
+    "symbol": "0700.HK"
+  },
+  {
+    "doc_id": "tencent_2025_q1_presentation",
+    "title": "Tencent First Quarter of 2025 Corporate Overview",
+    "url": "https://static.www.tencent.com/uploads/2025/05/21/377e00a5b3baf24c4d67479a496fbf3b.pdf",
+    "source_name": "Tencent Investors",
+    "language": "en",
+    "doc_type": "quarterly_presentation",
+    "company": "Tencent",
+    "symbol": "0700.HK"
+  },
+  {
+    "doc_id": "alibaba_2025_annual_report",
+    "title": "阿里巴巴 2025 财年年度报告",
+    "url": "https://data.alibabagroup.com/ecms-files/1514443390/dbeaef58-eac8-4c00-9fdf-e361a5841078/Alibaba%20Group%20Holding%20Limited%20Fiscal%20Year%202025%20Annual%20Report.pdf",
+    "source_name": "Alibaba IR",
+    "language": "en",
+    "doc_type": "annual_report",
+    "company": "Alibaba",
+    "symbol": "BABA"
+  },
+  {
+    "doc_id": "alibaba_2026_interim_report",
+    "title": "阿里巴巴 2026 财年中期报告",
+    "url": "https://data.alibabagroup.com/ecms-files/1514443390/2b483071-b7a2-45ea-b6cd-f4d35861bab0/Fiscal%20Year%202026%20Interim%20Report.pdf",
+    "source_name": "Alibaba IR",
+    "language": "en",
+    "doc_type": "interim_report",
+    "company": "Alibaba",
+    "symbol": "BABA"
+  },
+  {
+    "doc_id": "alibaba_2025_march_quarter_results",
+    "title": "阿里巴巴集团公布2025年3月份季度及2025财年业绩",
+    "url": "https://home.alibabagroup.com/zh-HK/document-1859016196574150656",
+    "source_name": "Alibaba Group",
+    "language": "zh",
+    "doc_type": "earnings_release",
+    "company": "Alibaba",
+    "symbol": "BABA",
+    "published_at": "2025-05-15"
+  },
+  {
+    "doc_id": "alibaba_2025_june_quarter_results",
+    "title": "阿里巴巴集团公布2025年6月份季度业绩",
+    "url": "https://home.alibabagroup.com/zh-HK/document-1897714462505304064",
+    "source_name": "Alibaba Group",
+    "language": "zh",
+    "doc_type": "earnings_release",
+    "company": "Alibaba",
+    "symbol": "BABA",
+    "published_at": "2025-08-15"
+  },
+  {
+    "doc_id": "xiaomi_2024_annual_report",
+    "title": "小米集团 2024 年度报告",
+    "url": "https://www.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042401120_c.pdf",
+    "source_name": "HKEXnews",
+    "language": "zh",
+    "doc_type": "annual_report",
+    "company": "Xiaomi",
+    "symbol": "1810.HK"
+  },
+  {
+    "doc_id": "catl_2025_annual_report",
+    "title": "宁德时代 2025 年年度报告全文",
+    "url": "https://www.catl.com/uploads/1/file/public/202603/20260310105829_c5p2l3q9ll.pdf",
+    "source_name": "CATL",
+    "language": "zh",
+    "doc_type": "annual_report",
+    "company": "CATL",
+    "symbol": "300750.SZ"
+  },
+  {
+    "doc_id": "catl_2025_interim_report",
+    "title": "宁德时代 2025 年半年度报告全文",
+    "url": "https://www.catl.com/uploads/1/file/public/202507/20250730224404_1re4ofju1s.pdf",
+    "source_name": "CATL",
+    "language": "zh",
+    "doc_type": "interim_report",
+    "company": "CATL",
+    "symbol": "300750.SZ"
+  },
+  {
+    "doc_id": "catl_2025_annual_news",
+    "title": "宁德时代发布2025年年度报告新闻稿",
+    "url": "https://www.catl.com/news/9654.html",
+    "source_name": "CATL",
+    "language": "zh",
+    "doc_type": "earnings_release",
+    "company": "CATL",
+    "symbol": "300750.SZ",
+    "published_at": "2026-03-10"
+  },
+  {
+    "doc_id": "moutai_2024_annual_report",
+    "title": "贵州茅台 2024 年年度报告",
+    "url": "https://www.moutaichina.com/mtgf/attachDir/2025/04/2025040817542019660.pdf",
+    "source_name": "贵州茅台",
+    "language": "zh",
+    "doc_type": "annual_report",
+    "company": "Moutai",
+    "symbol": "600519.SH"
+  },
+  {
+    "doc_id": "cmb_2025_interim_report",
+    "title": "招商银行 2025 年半年度报告摘要",
+    "url": "https://s3gw.cmbchina.com/lb5001-cmbweb-prd-1255000097/cmbir/20250829/74edd10f-f85c-40f4-978d-6e826142d944.pdf",
+    "source_name": "招商银行投资者关系",
+    "language": "zh",
+    "doc_type": "interim_report",
+    "company": "China Merchants Bank",
+    "symbol": "600036.SH"
+  },
+  {
+    "doc_id": "apple_2025_q2_financial_statements",
+    "title": "Apple Fiscal 2025 Q2 Consolidated Financial Statements",
+    "url": "https://www.apple.com/newsroom/pdfs/fy2025-q2/FY25_Q2_Consolidated_Financial_Statements.pdf",
+    "source_name": "Apple Newsroom",
+    "language": "en",
+    "doc_type": "quarterly_financial_statements",
+    "company": "Apple",
+    "symbol": "AAPL"
+  },
+  {
+    "doc_id": "tesla_2025_q1_financial_results",
+    "title": "Tesla Q1 2025 Financial Results",
+    "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828025018851/exhbit991.htm",
+    "source_name": "SEC EDGAR",
+    "language": "en",
+    "doc_type": "quarterly_results",
+    "company": "Tesla",
+    "symbol": "TSLA"
+  }
+]

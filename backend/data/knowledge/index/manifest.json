@@ -1,0 +1,206 @@
+{
+  "document_count": 20,
+  "chunk_count": 3086,
+  "documents": [
+    {
+      "doc_id": "alibaba_2025_annual_report",
+      "title": "阿里巴巴 2025 财年年度报告",
+      "doc_type": "annual_report",
+      "language": "en",
+      "source_name": "Alibaba IR",
+      "company": "Alibaba",
+      "symbol": "BABA",
+      "url": "https://data.alibabagroup.com/ecms-files/1514443390/dbeaef58-eac8-4c00-9fdf-e361a5841078/Alibaba%20Group%20Holding%20Limited%20Fiscal%20Year%202025%20Annual%20Report.pdf"
+    },
+    {
+      "doc_id": "alibaba_2025_june_quarter_results",
+      "title": "阿里巴巴集团公布2025年6月份季度业绩",
+      "doc_type": "earnings_release",
+      "language": "zh",
+      "source_name": "Alibaba Group",
+      "company": "Alibaba",
+      "symbol": "BABA",
+      "url": "https://home.alibabagroup.com/zh-HK/document-1897714462505304064"
+    },
+    {
+      "doc_id": "alibaba_2025_march_quarter_results",
+      "title": "阿里巴巴集团公布2025年3月份季度及2025财年业绩",
+      "doc_type": "earnings_release",
+      "language": "zh",
+      "source_name": "Alibaba Group",
+      "company": "Alibaba",
+      "symbol": "BABA",
+      "url": "https://home.alibabagroup.com/zh-HK/document-1859016196574150656"
+    },
+    {
+      "doc_id": "alibaba_2026_interim_report",
+      "title": "阿里巴巴 2026 财年中期报告",
+      "doc_type": "interim_report",
+      "language": "en",
+      "source_name": "Alibaba IR",
+      "company": "Alibaba",
+      "symbol": "BABA",
+      "url": "https://data.alibabagroup.com/ecms-files/1514443390/2b483071-b7a2-45ea-b6cd-f4d35861bab0/Fiscal%20Year%202026%20Interim%20Report.pdf"
+    },
+    {
+      "doc_id": "apple_2025_q2_financial_statements",
+      "title": "Apple Fiscal 2025 Q2 Consolidated Financial Statements",
+      "doc_type": "quarterly_financial_statements",
+      "language": "en",
+      "source_name": "Apple Newsroom",
+      "company": "Apple",
+      "symbol": "AAPL",
+      "url": "https://www.apple.com/newsroom/pdfs/fy2025-q2/FY25_Q2_Consolidated_Financial_Statements.pdf"
+    },
+    {
+      "doc_id": "catl_2025_annual_news",
+      "title": "宁德时代发布2025年年度报告新闻稿",
+      "doc_type": "earnings_release",
+      "language": "zh",
+      "source_name": "CATL",
+      "company": "CATL",
+      "symbol": "300750.SZ",
+      "url": "https://www.catl.com/news/9654.html"
+    },
+    {
+      "doc_id": "catl_2025_annual_report",
+      "title": "宁德时代 2025 年年度报告全文",
+      "doc_type": "annual_report",
+      "language": "zh",
+      "source_name": "CATL",
+      "company": "CATL",
+      "symbol": "300750.SZ",
+      "url": "https://www.catl.com/uploads/1/file/public/202603/20260310105829_c5p2l3q9ll.pdf"
+    },
+    {
+      "doc_id": "catl_2025_interim_report",
+      "title": "宁德时代 2025 年半年度报告全文",
+      "doc_type": "interim_report",
+      "language": "zh",
+      "source_name": "CATL",
+      "company": "CATL",
+      "symbol": "300750.SZ",
+      "url": "https://www.catl.com/uploads/1/file/public/202507/20250730224404_1re4ofju1s.pdf"
+    },
+    {
+      "doc_id": "cmb_2025_interim_report",
+      "title": "招商银行 2025 年半年度报告摘要",
+      "doc_type": "interim_report",
+      "language": "zh",
+      "source_name": "招商银行投资者关系",
+      "company": "China Merchants Bank",
+      "symbol": "600036.SH",
+      "url": "https://s3gw.cmbchina.com/lb5001-cmbweb-prd-1255000097/cmbir/20250829/74edd10f-f85c-40f4-978d-6e826142d944.pdf"
+    },
+    {
+      "doc_id": "en_core_finance_terms",
+      "title": "Core Finance Terms Reference",
+      "doc_type": "glossary",
+      "language": "en",
+      "source_name": "Project Curated Knowledge",
+      "company": null,
+      "symbol": null,
+      "url": "manual://en-core-finance-terms"
+    },
+    {
+      "doc_id": "en_investor_glossary",
+      "title": "Investor.gov Glossary",
+      "doc_type": "glossary",
+      "language": "en",
+      "source_name": "Investor.gov",
+      "company": null,
+      "symbol": null,
+      "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary"
+    },
+    {
+      "doc_id": "moutai_2024_annual_report",
+      "title": "贵州茅台 2024 年年度报告",
+      "doc_type": "annual_report",
+      "language": "zh",
+      "source_name": "贵州茅台",
+      "company": "Moutai",
+      "symbol": "600519.SH",
+      "url": "https://www.moutaichina.com/mtgf/attachDir/2025/04/2025040817542019660.pdf"
+    },
+    {
+      "doc_id": "tencent_2025_annual_report",
+      "title": "腾讯 2025 年度报告",
+      "doc_type": "annual_report",
+      "language": "zh",
+      "source_name": "Tencent Investors",
+      "company": "Tencent",
+      "symbol": "0700.HK",
+      "url": "https://static.www.tencent.com/uploads/2026/04/09/5c38a9ec3c5695da42c1534d63e4be0b.pdf"
+    },
+    {
+      "doc_id": "tencent_2025_interim_report",
+      "title": "腾讯 2025 中期报告",
+      "doc_type": "interim_report",
+      "language": "zh",
+      "source_name": "Tencent Investors",
+      "company": "Tencent",
+      "symbol": "0700.HK",
+      "url": "https://static.www.tencent.com/uploads/2025/08/26/00175ef813605d01873b4a533131aed0.pdf"
+    },
+    {
+      "doc_id": "tencent_2025_q1_presentation",
+      "title": "Tencent First Quarter of 2025 Corporate Overview",
+      "doc_type": "quarterly_presentation",
+      "language": "en",
+      "source_name": "Tencent Investors",
+      "company": "Tencent",
+      "symbol": "0700.HK",
+      "url": "https://static.www.tencent.com/uploads/2025/05/21/377e00a5b3baf24c4d67479a496fbf3b.pdf"
+    },
+    {
+      "doc_id": "tencent_2025_results_release",
+      "title": "腾讯公布二零二五年度及第四季业绩",
+      "doc_type": "earnings_release",
+      "language": "zh",
+      "source_name": "Tencent Investors",
+      "company": "Tencent",
+      "symbol": "0700.HK",
+      "url": "https://static.www.tencent.com/uploads/2026/03/18/559e5d480a4411165e6c7367d61fefbd.pdf"
+    },
+    {
+      "doc_id": "tesla_2025_q1_financial_results",
+      "title": "Tesla Q1 2025 Financial Results",
+      "doc_type": "quarterly_results",
+      "language": "en",
+      "source_name": "SEC EDGAR",
+      "company": "Tesla",
+      "symbol": "TSLA",
+      "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828025018851/exhbit991.htm"
+    },
+    {
+      "doc_id": "xiaomi_2024_annual_report",
+      "title": "小米集团 2024 年度报告",
+      "doc_type": "annual_report",
+      "language": "zh",
+      "source_name": "HKEXnews",
+      "company": "Xiaomi",
+      "symbol": "1810.HK",
+      "url": "https://www.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042401120_c.pdf"
+    },
+    {
+      "doc_id": "zh_core_finance_concepts",
+      "title": "金融核心概念术语卡",
+      "doc_type": "glossary",
+      "language": "zh",
+      "source_name": "Project Curated Knowledge",
+      "company": null,
+      "symbol": null,
+      "url": "manual://zh-core-finance-concepts"
+    },
+    {
+      "doc_id": "zh_financial_analysis_csrc",
+      "title": "读懂定期报告｜财务分析的基本内容是什么",
+      "doc_type": "knowledge_article",
+      "language": "zh",
+      "source_name": "中国证监会",
+      "company": null,
+      "symbol": null,
+      "url": "https://www.csrc.gov.cn/ningxia/c105510/c5994748/content.shtml"
+    }
+  ]
+}
