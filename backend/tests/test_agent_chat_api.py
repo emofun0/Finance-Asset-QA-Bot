@@ -296,6 +296,77 @@ def test_session_memory_fills_subject_and_reuses_cached_answer() -> None:
     assert memory.get_cached_answer("session-1", filled_plan) is not None
 
 
+def test_session_memory_does_not_reuse_cache_for_different_knowledge_queries() -> None:
+    memory = SessionMemoryService()
+    cached_answer = AnswerPayload(
+        question_type=IntentType.FINANCE_KNOWLEDGE,
+        request_message="什么是市盈率？",
+        summary="市盈率是估值倍数。",
+        objective_data={"source_mode": "rag"},
+        analysis=[],
+        sources=[],
+        limitations=[],
+        route=RouteDecision(intent=IntentType.FINANCE_KNOWLEDGE, need_rag=True, reason="test"),
+    )
+    first_plan = AgentPlanningResult(
+        tool_name="finance_knowledge",
+        thought="解释市盈率",
+        rewritten_query="请解释市盈率（PE ratio）的含义、计算方法和常见解读。",
+        reason="用户询问市盈率概念。",
+    )
+    memory.remember("session-1", first_plan, cached_answer)
+
+    second_plan = AgentPlanningResult(
+        tool_name="finance_knowledge",
+        thought="解释收入和净利润区别",
+        rewritten_query="请解释收入和净利润的区别，并给出简要定义与关系。",
+        reason="用户询问两个财务概念之间的区别。",
+    )
+
+    assert memory.get_cached_answer("session-1", second_plan) is None
+
+
+def test_session_memory_does_not_mix_new_company_with_previous_symbol() -> None:
+    memory = SessionMemoryService()
+    previous_answer = AnswerPayload(
+        question_type=IntentType.REPORT_SUMMARY,
+        request_message="腾讯最近财报摘要是什么？",
+        summary="Tencent 最近披露材料的核心财务亮点已提取。",
+        objective_data={"source_mode": "local_rag"},
+        analysis=[],
+        sources=[],
+        limitations=[],
+        route=RouteDecision(
+            intent=IntentType.REPORT_SUMMARY,
+            need_rag=True,
+            extracted_company="Tencent",
+            extracted_symbol="0700.HK",
+            reason="test",
+        ),
+    )
+    previous_plan = AgentPlanningResult(
+        tool_name="report_summary",
+        thought="查询腾讯财报摘要",
+        company="Tencent",
+        symbol="0700.HK",
+        reason="test",
+    )
+    memory.remember("session-1", previous_plan, previous_answer)
+
+    followup_plan = AgentPlanningResult(
+        tool_name="report_summary",
+        thought="查询阿里财报摘要",
+        company="阿里巴巴",
+        symbol=None,
+        reason="test",
+    )
+
+    filled_plan = memory.fill_subject_from_memory("session-1", followup_plan)
+
+    assert filled_plan.company == "Alibaba"
+    assert filled_plan.symbol == "BABA"
+
+
 def test_agent_service_normalizes_colloquial_price_question_to_trend() -> None:
     service = AgentService(
         provider="ollama",

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from app.core.company_catalog import find_company_profile
 from dataclasses import dataclass, field
+import re
 from threading import RLock
 
 from app.llm.contracts import AgentPlanningResult
@@ -85,10 +87,7 @@ class SessionMemoryService:
             return plan
 
         normalized = plan.model_copy(deep=True)
-        if not normalized.company and memory.last_company:
-            normalized.company = memory.last_company
-        if not normalized.symbol and memory.last_symbol:
-            normalized.symbol = memory.last_symbol
+        normalized = self._fill_subject_fields(normalized, memory)
         if normalized.time_length is None:
             related_answer = self.get_related_answer(session_id, normalized)
             time_range_days = self._extract_time_range_days(related_answer)
@@ -105,8 +104,12 @@ class SessionMemoryService:
         if memory is None:
             return None
 
-        target_company = (plan.company or memory.last_company or "").strip().lower()
-        target_symbol = (plan.symbol or memory.last_symbol or "").strip().lower()
+        company, symbol = self._resolve_subject(plan.company, plan.symbol)
+        target_company = (company or "").strip().lower()
+        target_symbol = (symbol or "").strip().lower()
+        if not target_company and not target_symbol:
+            target_company = (memory.last_company or "").strip().lower()
+            target_symbol = (memory.last_symbol or "").strip().lower()
         if not target_company and not target_symbol:
             return memory.recent_answers[-1] if memory.recent_answers else None
 
@@ -128,6 +131,7 @@ class SessionMemoryService:
         return None
 
     def _build_cache_key(self, plan: AgentPlanningResult) -> str:
+        query_signature = self._build_query_signature(plan)
         return "|".join(
             [
                 plan.tool_name,
@@ -136,5 +140,47 @@ class SessionMemoryService:
                 str(plan.time_length or ""),
                 str(plan.time_unit or ""),
                 str(plan.event_date or ""),
+                query_signature,
             ]
         )
+
+    def _build_query_signature(self, plan: AgentPlanningResult) -> str:
+        candidates = [
+            plan.rewritten_query,
+            plan.direct_response,
+            plan.reason,
+            plan.thought,
+        ]
+        for candidate in candidates:
+            normalized = self._normalize_text(candidate)
+            if normalized:
+                return normalized
+        return ""
+
+    def _normalize_text(self, value: str | None) -> str:
+        if not value:
+            return ""
+        collapsed = re.sub(r"\s+", " ", value).strip().lower()
+        return collapsed[:160]
+
+    def _fill_subject_fields(self, plan: AgentPlanningResult, memory: SessionMemory) -> AgentPlanningResult:
+        normalized = plan.model_copy(deep=True)
+        company, symbol = self._resolve_subject(normalized.company, normalized.symbol)
+
+        if company or symbol:
+            normalized.company = company
+            normalized.symbol = symbol
+            return normalized
+
+        normalized.company = memory.last_company
+        normalized.symbol = memory.last_symbol
+        return normalized
+
+    def _resolve_subject(self, company: str | None, symbol: str | None) -> tuple[str | None, str | None]:
+        profile = find_company_profile(company=company, symbol=symbol)
+        if profile is not None:
+            return profile.canonical_name, profile.symbol
+
+        normalized_company = company.strip() if company else None
+        normalized_symbol = symbol.strip() if symbol else None
+        return normalized_company, normalized_symbol

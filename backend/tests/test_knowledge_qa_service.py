@@ -222,6 +222,25 @@ def test_report_summary_extracts_financial_highlights() -> None:
     assert response.sources[0].type == "earnings_release"
 
 
+def test_report_summary_normalizes_company_alias_before_local_retrieval() -> None:
+    service = build_service()
+
+    response = service.answer(
+        ChatRequest(message="腾讯最近财报摘要是什么？"),
+        RouteDecision(
+            intent=IntentType.REPORT_SUMMARY,
+            need_rag=True,
+            extracted_company="腾讯",
+            reason="test",
+        ),
+    )
+
+    assert response.route.extracted_company == "Tencent"
+    assert response.route.extracted_symbol == "0700.HK"
+    assert response.objective_data["source_mode"] == "local_rag"
+    assert any("收入" in item for item in response.analysis)
+
+
 def test_report_summary_keeps_strong_local_report_without_web_fallback() -> None:
     service = KnowledgeQAService(
         retriever=FakeKnowledgeRetriever(),

@@ -31,11 +31,12 @@ class KnowledgeQAService:
         self.query_rewrite_service = query_rewrite_service
 
     def answer(self, request: ChatRequest, route: RouteDecision) -> AnswerPayload:
-        results = self._retrieve(request.message, route)
+        normalized_route = self._normalize_route_subject(route)
+        results = self._retrieve(request.message, normalized_route)
         trace_event(
             "rag.results",
             {
-                "intent": route.intent,
+                "intent": normalized_route.intent,
                 "count": len(results),
                 "results": [
                     {
@@ -49,9 +50,19 @@ class KnowledgeQAService:
             },
         )
 
-        if route.intent.value == "report_summary":
-            return self._build_report_summary(request, route, results)
-        return self._build_knowledge_answer(request, route, results)
+        if normalized_route.intent.value == "report_summary":
+            return self._build_report_summary(request, normalized_route, results)
+        return self._build_knowledge_answer(request, normalized_route, results)
+
+    def _normalize_route_subject(self, route: RouteDecision) -> RouteDecision:
+        profile = find_company_profile(route.extracted_company, route.extracted_symbol)
+        if profile is None:
+            return route
+
+        normalized = route.model_copy(deep=True)
+        normalized.extracted_company = profile.canonical_name
+        normalized.extracted_symbol = profile.symbol
+        return normalized
 
     def _retrieve(self, message: str, route: RouteDecision) -> list[RetrievalResult]:
         rewritten_message = self._rewrite_query(message, route)
