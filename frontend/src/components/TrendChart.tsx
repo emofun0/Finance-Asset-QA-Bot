@@ -50,19 +50,15 @@ export function TrendChart({ symbol, points, trend, changePct }: TrendChartProps
   const lastPoint = coords[coords.length - 1];
 
   return (
-    <section className="panel chart-panel">
-      <div className="panel-heading">
-        <div>
-          <p className="section-kicker">价格走势</p>
-          <h3>{symbol} 日线走势</h3>
-        </div>
-        <div className="chart-metrics">
+    <section className="inline-chart">
+      <div className="inline-chart-header">
+        <strong>{symbol}</strong>
+        <div className="inline-chart-metrics">
           <span>{trend ?? "未分类"}</span>
           <strong>{formatChange(changePct)}</strong>
         </div>
       </div>
-
-      <div className="chart-canvas">
+      <div className="inline-chart-canvas">
         <svg viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} role="img" aria-label={`${symbol} 价格走势图`}>
           <defs>
             <linearGradient id="trendArea" x1="0" y1="0" x2="0" y2="1">

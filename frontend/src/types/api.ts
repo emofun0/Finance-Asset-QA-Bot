@@ -82,3 +82,27 @@ export interface AssetHistoryResponse {
   change_pct: number;
   points: HistoryPoint[];
 }
+
+export interface ChatChartData {
+  symbol: string;
+  trend: string | null;
+  change_pct: number | null;
+  points: HistoryPoint[];
+}
+
+export interface ChatMessagePayload {
+  text: string;
+  sources: SourceItem[];
+  chart: ChatChartData | null;
+}
+
+export interface ChatResponse {
+  request_id: string;
+  message: ChatMessagePayload;
+}
+
+export type ChatStreamEvent =
+  | { type: "meta"; request_id: string }
+  | { type: "delta"; text: string }
+  | { type: "done"; request_id: string; message: ChatMessagePayload }
+  | { type: "error"; request_id: string; code: string; message: string; details?: Record<string, unknown> | null };

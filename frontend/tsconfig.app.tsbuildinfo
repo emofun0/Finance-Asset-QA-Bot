@@ -1,1 +1,1 @@
-{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/AnswerView.tsx","./src/components/TrendChart.tsx","./src/services/api.ts","./src/types/api.ts"],"version":"5.9.3"}
+{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/TrendChart.tsx","./src/services/api.ts","./src/types/api.ts"],"version":"5.9.3"}
