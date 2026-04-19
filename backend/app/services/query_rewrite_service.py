@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from app.core.config import settings
 from app.llm.client import BaseLLMClient, NullLLMClient
 from app.llm.contracts import QueryRewriteResult
@@ -55,6 +57,8 @@ class QueryRewriteService:
             return False
         if route.extracted_company or route.extracted_symbol:
             return False
+        if self._is_short_term_question(message):
+            return False
 
         lowered = message.lower()
         concept_keywords = (
@@ -74,3 +78,18 @@ class QueryRewriteService:
             "beta",
         )
         return any(keyword in lowered for keyword in concept_keywords)
+
+    def _is_short_term_question(self, message: str) -> bool:
+        lowered = message.lower()
+        asks_definition = any(token in lowered for token in ["什么是", "是什么意思", "定义", "解释", "什么叫", "啥是"])
+        if not asks_definition:
+            return False
+
+        core = re.sub(r"^\s*(请)?解释(一下)?", "", message)
+        core = re.sub(r"^\s*请问", "", core)
+        core = re.sub(r"^\s*什么是", "", core)
+        core = re.sub(r"^\s*什么叫", "", core)
+        core = re.sub(r"^\s*啥是", "", core)
+        core = re.sub(r"是什么意思|的定义|定义|解释|一下|？|\?|。", "", core)
+        compact = re.sub(r"\s+", "", core)
+        return 0 < len(compact) <= 12

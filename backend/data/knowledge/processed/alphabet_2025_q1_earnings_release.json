@@ -1,0 +1,14 @@
+{
+  "doc_id": "alphabet_2025_q1_earnings_release",
+  "title": "Alphabet First Quarter 2025 Earnings Highlights",
+  "url": "https://abc.xyz/investor/",
+  "source_name": "Alphabet Investor Relations",
+  "language": "en",
+  "doc_type": "earnings_release",
+  "company": "Alphabet",
+  "symbol": "GOOG",
+  "published_at": "2025-04-24",
+  "inline_text": "Alphabet reported first quarter 2025 revenue of 90.2 billion U.S. dollars. Google Search and other advertising businesses remained the largest revenue contributor, while Google Cloud continued to expand with stronger profitability. The company said cloud demand was driven by data analytics, infrastructure and AI products. Operating margin improved year over year as cost discipline and scale benefits supported earnings. Management also highlighted ongoing capital expenditure to support AI infrastructure and product innovation.",
+  "raw_path": "/home/ypw/Codes/Finance_Asset_QA_System/backend/data/knowledge/raw/alphabet_2025_q1_earnings_release.txt",
+  "text": "Alphabet reported first quarter 2025 revenue of 90.2 billion U.S. dollars. Google Search and other advertising businesses remained the largest revenue contributor, while Google Cloud continued to expand with stronger profitability. The company said cloud demand was driven by data analytics, infrastructure and AI products. Operating margin improved year over year as cost discipline and scale benefits supported earnings. Management also highlighted ongoing capital expenditure to support AI infrastructure and product innovation."
+}

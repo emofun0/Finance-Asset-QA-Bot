@@ -1,0 +1,14 @@
+{
+  "doc_id": "amazon_2025_q1_earnings_release",
+  "title": "Amazon First Quarter 2025 Earnings Highlights",
+  "url": "https://www.aboutamazon.com/news/company-news",
+  "source_name": "Amazon News",
+  "language": "en",
+  "doc_type": "earnings_release",
+  "company": "Amazon",
+  "symbol": "AMZN",
+  "published_at": "2025-05-01",
+  "inline_text": "Amazon reported first quarter 2025 net sales of 143.3 billion U.S. dollars, with growth supported by online stores, third-party seller services, advertising and AWS. AWS revenue reached 29.3 billion U.S. dollars and remained Amazon's main profit engine. Operating income improved year over year as fulfillment efficiency and cloud scale supported margins. The company highlighted demand for generative AI services on AWS, continued infrastructure investment and expanding advertising monetization across its consumer ecosystem.",
+  "raw_path": "/home/ypw/Codes/Finance_Asset_QA_System/backend/data/knowledge/raw/amazon_2025_q1_earnings_release.txt",
+  "text": "Amazon reported first quarter 2025 net sales of 143.3 billion U.S. dollars, with growth supported by online stores, third-party seller services, advertising and AWS. AWS revenue reached 29.3 billion U.S. dollars and remained Amazon's main profit engine. Operating income improved year over year as fulfillment efficiency and cloud scale supported margins. The company highlighted demand for generative AI services on AWS, continued infrastructure investment and expanding advertising monetization across its consumer ecosystem."
+}

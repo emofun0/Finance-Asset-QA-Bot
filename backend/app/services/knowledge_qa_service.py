@@ -32,7 +32,7 @@ class KnowledgeQAService:
 
     def answer(self, request: ChatRequest, route: RouteDecision) -> AnswerPayload:
         normalized_route = self._normalize_route_subject(route)
-        results = self._retrieve(request.message, normalized_route)
+        results = self._retrieve(request, normalized_route)
         trace_event(
             "rag.results",
             {
@@ -64,8 +64,9 @@ class KnowledgeQAService:
         normalized.extracted_symbol = profile.symbol
         return normalized
 
-    def _retrieve(self, message: str, route: RouteDecision) -> list[RetrievalResult]:
-        rewritten_message = self._rewrite_query(message, route)
+    def _retrieve(self, request: ChatRequest, route: RouteDecision) -> list[RetrievalResult]:
+        message = request.message
+        rewritten_message = self._rewrite_query(request=request, route=route)
         preferred_language = "zh" if self._contains_chinese(message) else None
         trace_event(
             "rag.retrieve",
@@ -139,6 +140,8 @@ class KnowledgeQAService:
             candidate_queries.append("季度报告 年报 区别 quarterly report annual report difference")
         if "beta" in lowered:
             candidate_queries.append("beta coefficient beta glossary market risk")
+        if "纳斯达克" in message or "nasdaq" in lowered:
+            candidate_queries.append("纳斯达克 Nasdaq stock exchange market index technology stocks")
 
         combined: list[RetrievalResult] = []
         for query in candidate_queries:
@@ -334,6 +337,8 @@ class KnowledgeQAService:
 
         if "市盈率" in message:
             summary = "市盈率通常表示股票价格相对于每股收益的估值倍数，常用于衡量市场如何给公司盈利定价。"
+        elif "做空" in message or "short selling" in lowered:
+            summary = "做空通常指先借入并卖出某项资产，待价格下跌后再买回归还，从中赚取差价的交易策略。"
         elif "pe ratio" in lowered or "price to earnings" in lowered or "price-to-earnings" in lowered:
             summary = "PE ratio 即市盈率，用来衡量股票价格相对于每股收益的估值倍数，是常见的估值指标。"
         elif "beta" in lowered:
@@ -349,7 +354,7 @@ class KnowledgeQAService:
         elif "quarterly report" in lowered or "10q" in lowered:
             summary = "季度报告通常披露公司最近一个季度未经审计的财务数据和经营情况。"
         else:
-            summary = self._trim_excerpt(results[0].content)
+            summary = self._build_generic_knowledge_summary(message, results)
 
         analysis = [self._extract_relevant_excerpt(message, result.content) for result in results[:3]]
         return summary, analysis
@@ -399,12 +404,31 @@ class KnowledgeQAService:
         return cleaned[:max_length] + ("..." if len(cleaned) > max_length else "")
 
     def _extract_relevant_excerpt(self, message: str, content: str) -> str:
-        terms = [term for term in ["市盈率", "每股收益", "营业收入", "收入", "净利润", "盈利能力", "季度报告", "年报"] if term in message]
+        terms = [
+            term
+            for term in [
+                "市盈率",
+                "每股收益",
+                "营业收入",
+                "收入",
+                "净利润",
+                "盈利能力",
+                "季度报告",
+                "年报",
+                "做空",
+                "卖出",
+                "借入",
+                "回补",
+            ]
+            if term in message
+        ]
         terms.extend(token for token in re.findall(r"[A-Za-z]{3,}", message) if token.lower() not in {"what", "define", "coefficient"})
         compact_content = " ".join(content.split())
         sentences = self._split_sentences(content)
         for sentence in sentences:
             if self._is_low_signal_excerpt(sentence):
+                continue
+            if self._is_title_only_excerpt(sentence):
                 continue
             matched_terms = [term for term in terms if term.lower() in sentence.lower()]
             if matched_terms:
@@ -415,8 +439,11 @@ class KnowledgeQAService:
                 return self._trim_excerpt(sentence)
         for term in terms:
             candidate = self._extract_keyword_window(compact_content, term)
-            if candidate and not self._is_low_signal_excerpt(candidate):
+            if candidate and not self._is_low_signal_excerpt(candidate) and not self._is_title_only_excerpt(candidate):
                 return candidate
+        for sentence in sentences:
+            if not self._is_low_signal_excerpt(sentence) and not self._is_title_only_excerpt(sentence):
+                return self._trim_excerpt(sentence)
         return self._trim_excerpt(sentences[0] if sentences else content)
 
     def _split_sentences(self, content: str) -> list[str]:
@@ -456,6 +483,25 @@ class KnowledgeQAService:
         ]
         return any(token in lowered for token in low_signal_tokens)
 
+    def _is_title_only_excerpt(self, text: str) -> bool:
+        lowered = " ".join(text.split()).lower()
+        return any(
+            token in lowered
+            for token in [
+                "| vantage",
+                "| wikipedia",
+                "| investopedia",
+                "home right arrow terminology",
+            ]
+        )
+
+    def _build_generic_knowledge_summary(self, message: str, results: list[RetrievalResult]) -> str:
+        for result in results:
+            excerpt = self._extract_relevant_excerpt(message, result.content)
+            if excerpt and not self._is_low_signal_excerpt(excerpt) and not self._is_title_only_excerpt(excerpt):
+                return excerpt
+        return self._trim_excerpt(results[0].content)
+
     def _to_sources(self, results: list[RetrievalResult]) -> list[SourceItem]:
         sources: list[SourceItem] = []
         seen: set[tuple[str, str | None]] = set()
@@ -490,6 +536,18 @@ class KnowledgeQAService:
     def _has_sufficient_knowledge_coverage(self, message: str, results: list[RetrievalResult]) -> bool:
         if not results:
             return False
+        key_terms = self._extract_knowledge_query_terms(message)
+        if not key_terms:
+            top_result = results[0]
+            return top_result.score >= 0.45 and top_result.metadata.get("doc_type") in {"glossary", "knowledge_article"}
+
+        for result in results[:3]:
+            haystack = f"{result.metadata.get('title', '')} {result.content}".lower()
+            if any(term.lower() in haystack for term in key_terms):
+                return True
+        return False
+
+    def _extract_knowledge_query_terms(self, message: str) -> list[str]:
         finance_terms = [
             "市盈率",
             "本益比",
@@ -497,6 +555,9 @@ class KnowledgeQAService:
             "营业收入",
             "净利润",
             "每股收益",
+            "纳斯达克",
+            "纳指",
+            "nasdaq",
             "beta",
             "pe ratio",
             "price to earnings",
@@ -508,15 +569,21 @@ class KnowledgeQAService:
             "年报",
         ]
         key_terms = [term for term in finance_terms if term.lower() in message.lower()]
-        if not key_terms:
-            key_terms = [term for term in re.findall(r"[A-Za-z]{3,}", message) if len(term) >= 3]
-        if not key_terms:
-            return bool(results)
-        for result in results[:3]:
-            haystack = f"{result.metadata.get('title', '')} {result.content}".lower()
-            if any(term.lower() in haystack for term in key_terms):
-                return True
-        return False
+        english_terms = [term for term in re.findall(r"[A-Za-z]{3,}", message) if len(term) >= 3]
+        chinese_terms = [
+            term for term in re.findall(r"[\u4e00-\u9fff]{2,}", message)
+            if term not in {"什么是", "有什么", "区别", "定义", "解释", "一下", "一下子"}
+        ]
+        ordered_terms = key_terms + english_terms + chinese_terms
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for term in ordered_terms:
+            normalized = term.strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(term.strip())
+        return deduped
 
     def _merge_results(
         self,
@@ -618,10 +685,22 @@ class KnowledgeQAService:
     def _uses_web_results(self, results: list[RetrievalResult]) -> bool:
         return any(result.chunk_id.startswith("web::") for result in results)
 
-    def _rewrite_query(self, message: str, route: RouteDecision) -> str:
+    def _rewrite_query(self, request: ChatRequest, route: RouteDecision) -> str:
+        retrieval_query = str(request.metadata.get("retrieval_query") or "").strip()
+        if retrieval_query:
+            trace_event(
+                "query_rewrite.skipped",
+                {
+                    "message": request.message,
+                    "reason": "agent_rewritten_query",
+                    "intent": route.intent,
+                    "rewritten_query": retrieval_query,
+                },
+            )
+            return retrieval_query
         if self.query_rewrite_service is None:
-            return message
-        return self.query_rewrite_service.rewrite(message, route)
+            return request.message
+        return self.query_rewrite_service.rewrite(request.message, route)
 
     def _build_report_candidate_queries(self, message: str, route: RouteDecision) -> list[str]:
         candidates = [message]

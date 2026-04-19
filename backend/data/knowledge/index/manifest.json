@@ -1,6 +1,6 @@
 {
-  "document_count": 20,
-  "chunk_count": 3086,
+  "document_count": 26,
+  "chunk_count": 1291,
   "documents": [
     {
       "doc_id": "alibaba_2025_annual_report",
@@ -41,6 +41,26 @@
       "company": "Alibaba",
       "symbol": "BABA",
       "url": "https://data.alibabagroup.com/ecms-files/1514443390/2b483071-b7a2-45ea-b6cd-f4d35861bab0/Fiscal%20Year%202026%20Interim%20Report.pdf"
+    },
+    {
+      "doc_id": "alphabet_2025_q1_earnings_release",
+      "title": "Alphabet First Quarter 2025 Earnings Highlights",
+      "doc_type": "earnings_release",
+      "language": "en",
+      "source_name": "Alphabet Investor Relations",
+      "company": "Alphabet",
+      "symbol": "GOOG",
+      "url": "https://abc.xyz/investor/"
+    },
+    {
+      "doc_id": "amazon_2025_q1_earnings_release",
+      "title": "Amazon First Quarter 2025 Earnings Highlights",
+      "doc_type": "earnings_release",
+      "language": "en",
+      "source_name": "Amazon News",
+      "company": "Amazon",
+      "symbol": "AMZN",
+      "url": "https://www.aboutamazon.com/news/company-news"
     },
     {
       "doc_id": "apple_2025_q2_financial_statements",
@@ -113,6 +133,16 @@
       "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary"
     },
     {
+      "doc_id": "microsoft_2025_q3_earnings_release",
+      "title": "Microsoft Fiscal 2025 Third Quarter Earnings Highlights",
+      "doc_type": "earnings_release",
+      "language": "en",
+      "source_name": "Microsoft Investor Relations",
+      "company": "Microsoft",
+      "symbol": "MSFT",
+      "url": "https://www.microsoft.com/en-us/Investor/earnings/"
+    },
+    {
       "doc_id": "moutai_2024_annual_report",
       "title": "贵州茅台 2024 年年度报告",
       "doc_type": "annual_report",
@@ -121,6 +151,16 @@
       "company": "Moutai",
       "symbol": "600519.SH",
       "url": "https://www.moutaichina.com/mtgf/attachDir/2025/04/2025040817542019660.pdf"
+    },
+    {
+      "doc_id": "nvidia_2025_q1_earnings_release",
+      "title": "NVIDIA Fiscal 2026 First Quarter Earnings Highlights",
+      "doc_type": "earnings_release",
+      "language": "en",
+      "source_name": "NVIDIA Investor Relations",
+      "company": "NVIDIA",
+      "symbol": "NVDA",
+      "url": "https://investor.nvidia.com/"
     },
     {
       "doc_id": "tencent_2025_annual_report",
@@ -201,6 +241,26 @@
       "company": null,
       "symbol": null,
       "url": "https://www.csrc.gov.cn/ningxia/c105510/c5994748/content.shtml"
+    },
+    {
+      "doc_id": "zh_market_terms_glossary",
+      "title": "市场结构与行情术语卡",
+      "doc_type": "glossary",
+      "language": "zh",
+      "source_name": "Project Curated Knowledge",
+      "company": null,
+      "symbol": null,
+      "url": "manual://zh-market-terms-glossary"
+    },
+    {
+      "doc_id": "zh_trading_terms_glossary",
+      "title": "交易机制核心术语卡",
+      "doc_type": "glossary",
+      "language": "zh",
+      "source_name": "Project Curated Knowledge",
+      "company": null,
+      "symbol": null,
+      "url": "manual://zh-trading-terms-glossary"
     }
   ]
 }

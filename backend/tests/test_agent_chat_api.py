@@ -1,6 +1,12 @@
 import asyncio
 
 from app.api.routes import chat as chat_route
+import app.services.agent_service as agent_service_module
+from app.services.answer_service import AnswerService
+from app.services.answer_generation_service import AnswerGenerationService
+from app.services.knowledge_qa_service import KnowledgeQAService
+from app.services.query_rewrite_service import QueryRewriteService
+from app.services.router_service import RouterService
 from app.schemas.request import ChatRequest, LLMSelection, SessionResetRequest
 from app.schemas.domain import IntentType, RouteDecision
 from app.schemas.response import AnswerPayload, ChatMessagePayload, SourceItem
@@ -8,6 +14,8 @@ from app.llm.contracts import AgentPlanningResult
 from app.services.agent_service import AgentService, AgentStreamEvent, AgentToolExecutor
 from app.services.chat_presenter_service import ChatPresenterService
 from app.services.session_memory_service import SessionMemoryService
+from app.services.verification_service import VerificationService
+from app.tools.web_search_tool import OfficialWebSearchTool
 
 
 class FakeAgentService:
@@ -90,6 +98,207 @@ class RecordingAssetQAService:
         }
 
 
+class IrrelevantKnowledgeRetriever:
+    def search(self, query: str, **kwargs: object):  # type: ignore[no-untyped-def]
+        return [
+            type(
+                "FakeRetrievalResult",
+                (),
+                {
+                    "chunk_id": "local::0",
+                    "score": 0.2,
+                    "content": "这是一个和问题无关的财务分析通用段落。",
+                    "metadata": {
+                        "title": "通用财务分析",
+                        "doc_type": "knowledge_article",
+                        "url": "https://example.com/local",
+                    },
+                },
+            )()
+        ]
+
+
+class IntegrationWebSearchTool(OfficialWebSearchTool):
+    def __init__(self) -> None:
+        pass
+
+    def search_finance_knowledge(self, query: str, top_k: int = 3):  # type: ignore[override]
+        if "大A" in query or "大a" in query or "A股" in query:
+            return [
+                type(
+                    "FakeRetrievalResult",
+                    (),
+                    {
+                        "chunk_id": "web::big-a",
+                        "score": 0.96,
+                        "content": "A股通常指在中国内地证券交易所上市、以人民币计价和交易的普通股；在口语中“大A”常用来指代整个A股市场。",
+                        "metadata": {
+                            "title": "Investor Education - A股市场基础概念",
+                            "doc_type": "glossary",
+                            "url": "https://example.com/a-share-market",
+                        },
+                    },
+                )()
+            ]
+        if "纳指" in query or "NASDAQ" in query or "index" in query:
+            return [
+                type(
+                    "FakeRetrievalResult",
+                    (),
+                    {
+                        "chunk_id": "web::nasdaq-index",
+                        "score": 0.95,
+                        "content": "纳指通常指纳斯达克综合指数（NASDAQ Composite），反映纳斯达克市场大量上市公司的整体表现。",
+                        "metadata": {
+                            "title": "Investor Education - 纳斯达克综合指数基础概念",
+                            "doc_type": "glossary",
+                            "url": "https://example.com/nasdaq-composite",
+                        },
+                    },
+                )()
+            ]
+        return []
+
+
+class FakeStructuredPlanner:
+    def invoke(self, messages):  # type: ignore[no-untyped-def]
+        prompt = messages[-1].content
+        if "什么是大A" in prompt:
+            return AgentPlanningResult(
+                tool_name="finance_knowledge",
+                thought="解释大A的金融含义。",
+                rewritten_query="解释大A在金融语境中的含义",
+                reason="test",
+            )
+        if "什么是纳指" in prompt:
+            return AgentPlanningResult(
+                tool_name="direct_response",
+                thought="先直接回答。",
+                direct_response="纳指通常指纳斯达克综合指数。",
+                reason="test",
+            )
+        return AgentPlanningResult(
+            tool_name="direct_response",
+            thought="无法判断。",
+            direct_response="当前无法可靠回答该问题。",
+            reason="test",
+        )
+
+
+class FinanceKnowledgePlannerWithRewrittenQuery:
+    def invoke(self, messages):  # type: ignore[no-untyped-def]
+        prompt = messages[-1].content
+        if "什么是纳斯达克" in prompt:
+            return AgentPlanningResult(
+                tool_name="finance_knowledge",
+                thought="先改写成可检索的查询，再检索定义。",
+                rewritten_query="Nasdaq stock exchange definition role in financial markets",
+                reason="test",
+            )
+        return AgentPlanningResult(
+            tool_name="direct_response",
+            thought="无法判断。",
+            direct_response="当前无法可靠回答该问题。",
+            reason="test",
+        )
+
+
+class FinanceKnowledgeLangchainModel:
+    def with_structured_output(self, schema):  # type: ignore[no-untyped-def]
+        return FinanceKnowledgePlannerWithRewrittenQuery()
+
+    def invoke(self, messages):  # type: ignore[no-untyped-def]
+        return type("FakeMessage", (), {"content": "已基于检索结果整理最终回答。"})()
+
+
+class FakeLangchainModel:
+    def with_structured_output(self, schema):  # type: ignore[no-untyped-def]
+        return FakeStructuredPlanner()
+
+    def invoke(self, messages):  # type: ignore[no-untyped-def]
+        return type("FakeMessage", (), {"content": "已基于检索结果整理最终回答。"})()
+
+
+def build_integration_agent_service() -> AgentService:
+    asset_qa_service = RecordingAssetQAService()
+    knowledge_qa_service = KnowledgeQAService(
+        retriever=IrrelevantKnowledgeRetriever(),  # type: ignore[arg-type]
+        web_search_tool=IntegrationWebSearchTool(),
+        query_rewrite_service=QueryRewriteService(),
+    )
+    chat_presenter_service = ChatPresenterService(asset_qa_service=asset_qa_service)  # type: ignore[arg-type]
+    fallback_answer_service = AnswerService(
+        router_service=RouterService(),
+        asset_qa_service=asset_qa_service,  # type: ignore[arg-type]
+        knowledge_qa_service=knowledge_qa_service,
+        answer_generation_service=AnswerGenerationService(),
+        verification_service=VerificationService(),
+        chat_presenter_service=chat_presenter_service,
+    )
+    service = AgentService(
+        provider="openai",
+        model="fake-model",
+        asset_qa_service=asset_qa_service,  # type: ignore[arg-type]
+        knowledge_qa_service=knowledge_qa_service,
+        chat_presenter_service=chat_presenter_service,
+        fallback_answer_service=fallback_answer_service,
+        session_memory_service=SessionMemoryService(),
+    )
+    return service
+
+
+class RewrittenQueryOnlyWebSearchTool(OfficialWebSearchTool):
+    def __init__(self) -> None:
+        pass
+
+    def search_finance_knowledge(self, query: str, top_k: int = 3):  # type: ignore[override]
+        if "Nasdaq stock exchange definition role in financial markets" not in query:
+            return []
+        return [
+            type(
+                "FakeRetrievalResult",
+                (),
+                {
+                    "chunk_id": "web::nasdaq",
+                    "score": 0.95,
+                    "content": "NASDAQ is a major U.S. stock exchange and often also refers to the Nasdaq Composite index.",
+                    "metadata": {
+                        "title": "What Is Nasdaq",
+                        "doc_type": "glossary",
+                        "url": "https://www.nasdaq.com/glossary/n/nasdaq",
+                    },
+                },
+            )()
+        ]
+
+
+def build_agent_service_for_rewritten_query() -> AgentService:
+    asset_qa_service = RecordingAssetQAService()
+    knowledge_qa_service = KnowledgeQAService(
+        retriever=IrrelevantKnowledgeRetriever(),  # type: ignore[arg-type]
+        web_search_tool=RewrittenQueryOnlyWebSearchTool(),
+        query_rewrite_service=QueryRewriteService(),
+    )
+    chat_presenter_service = ChatPresenterService(asset_qa_service=asset_qa_service)  # type: ignore[arg-type]
+    fallback_answer_service = AnswerService(
+        router_service=RouterService(),
+        asset_qa_service=asset_qa_service,  # type: ignore[arg-type]
+        knowledge_qa_service=knowledge_qa_service,
+        answer_generation_service=AnswerGenerationService(),
+        verification_service=VerificationService(),
+        chat_presenter_service=chat_presenter_service,
+    )
+    return AgentService(
+        provider="openai",
+        model="fake-model",
+        asset_qa_service=asset_qa_service,  # type: ignore[arg-type]
+        knowledge_qa_service=knowledge_qa_service,
+        chat_presenter_service=chat_presenter_service,
+        fallback_answer_service=fallback_answer_service,
+        session_memory_service=SessionMemoryService(),
+    )
+
+
 def test_chat_endpoint_uses_agent_service(monkeypatch) -> None:
     monkeypatch.setattr(chat_route, "get_agent_service", lambda provider=None, model=None: FakeAgentService())
     response = chat_route.chat(
@@ -103,6 +312,60 @@ def test_chat_endpoint_uses_agent_service(monkeypatch) -> None:
     assert payload["success"] is True
     assert payload["data"]["question_type"] == "asset_price"
     assert payload["data"]["objective_data"]["symbol"] == "BABA"
+
+
+def test_chat_endpoint_end_to_end_returns_big_a_definition(monkeypatch) -> None:
+    monkeypatch.setattr(agent_service_module, "build_langchain_chat_model", lambda provider=None, model=None: FakeLangchainModel())
+    monkeypatch.setattr(chat_route, "get_agent_service", lambda provider=None, model=None: build_integration_agent_service())
+
+    response = chat_route.chat(
+        ChatRequest(
+            message="什么是大A",
+            llm=LLMSelection(provider="openai", model="fake-model"),
+        )
+    )
+
+    payload = response.model_dump(mode="json")
+    assert payload["success"] is True
+    assert payload["data"]["question_type"] == "finance_knowledge"
+    assert payload["data"]["sources"][0]["name"] == "Investor Education - A股市场基础概念"
+    assert "A股" in payload["data"]["summary"]
+
+
+def test_chat_endpoint_end_to_end_normalizes_direct_response_to_knowledge(monkeypatch) -> None:
+    monkeypatch.setattr(agent_service_module, "build_langchain_chat_model", lambda provider=None, model=None: FakeLangchainModel())
+    monkeypatch.setattr(chat_route, "get_agent_service", lambda provider=None, model=None: build_integration_agent_service())
+
+    response = chat_route.chat(
+        ChatRequest(
+            message="什么是纳指",
+            llm=LLMSelection(provider="openai", model="fake-model"),
+        )
+    )
+
+    payload = response.model_dump(mode="json")
+    assert payload["success"] is True
+    assert payload["data"]["question_type"] == "finance_knowledge"
+    assert payload["data"]["sources"][0]["name"] == "Investor Education - 纳斯达克综合指数基础概念"
+    assert "纳斯达克综合指数" in payload["data"]["summary"]
+
+
+def test_chat_endpoint_end_to_end_uses_agent_rewritten_query_for_search(monkeypatch) -> None:
+    monkeypatch.setattr(agent_service_module, "build_langchain_chat_model", lambda provider=None, model=None: FinanceKnowledgeLangchainModel())
+    monkeypatch.setattr(chat_route, "get_agent_service", lambda provider=None, model=None: build_agent_service_for_rewritten_query())
+
+    response = chat_route.chat(
+        ChatRequest(
+            message="什么是纳斯达克",
+            llm=LLMSelection(provider="openai", model="fake-model"),
+        )
+    )
+
+    payload = response.model_dump(mode="json")
+    assert payload["success"] is True
+    assert payload["data"]["question_type"] == "finance_knowledge"
+    assert payload["data"]["sources"][0]["name"] == "What Is Nasdaq"
+    assert "stock exchange" in payload["data"]["summary"].lower()
 
 
 def test_chat_stream_endpoint_emits_agent_events(monkeypatch) -> None:
@@ -394,6 +657,32 @@ def test_agent_service_normalizes_colloquial_price_question_to_trend() -> None:
     assert plan.time_unit == "day"
 
 
+def test_agent_service_normalizes_finance_term_direct_response_to_knowledge() -> None:
+    service = AgentService(
+        provider="ollama",
+        model="test-model",
+        asset_qa_service=DummyToolService(),  # type: ignore[arg-type]
+        knowledge_qa_service=DummyToolService(),  # type: ignore[arg-type]
+        chat_presenter_service=ChatPresenterService(asset_qa_service=RecordingAssetQAService()),  # type: ignore[arg-type]
+        fallback_answer_service=FakeFallbackAnswerService(),  # type: ignore[arg-type]
+        session_memory_service=SessionMemoryService(),
+    )
+
+    plan = service._normalize_plan(  # type: ignore[attr-defined]
+        "什么是纳指",
+        AgentPlanningResult(
+            tool_name="direct_response",
+            thought="当前知识库不足，直接回答。",
+            direct_response="纳指通常指纳斯达克综合指数。",
+            reason="",
+        ),
+    )
+
+    assert plan.tool_name == "finance_knowledge"
+    assert plan.direct_response is None
+    assert plan.rewritten_query == "什么是纳指"
+
+
 def test_agent_service_inherits_previous_time_range_for_followup_reason_question() -> None:
     memory = SessionMemoryService()
     previous_answer = AnswerPayload(
@@ -442,3 +731,34 @@ def test_agent_service_inherits_previous_time_range_for_followup_reason_question
 
     assert inherited.time_length == 365
     assert inherited.time_unit == "day"
+
+
+def test_agent_service_remembers_subject_from_direct_response_clarification() -> None:
+    memory = SessionMemoryService()
+    service = AgentService(
+        provider="ollama",
+        model="test-model",
+        asset_qa_service=DummyToolService(),  # type: ignore[arg-type]
+        knowledge_qa_service=DummyToolService(),  # type: ignore[arg-type]
+        chat_presenter_service=ChatPresenterService(asset_qa_service=RecordingAssetQAService()),  # type: ignore[arg-type]
+        fallback_answer_service=FakeFallbackAnswerService(),  # type: ignore[arg-type]
+        session_memory_service=memory,
+    )
+
+    service._plan_request = lambda request: AgentPlanningResult(  # type: ignore[method-assign]
+        tool_name="direct_response",
+        thought="问题不够明确，先澄清。",
+        company="NVIDIA",
+        symbol="NVDA",
+        direct_response="请补充具体需求，例如现价或走势。",
+        reason="test",
+    )
+
+    service._run_request(  # type: ignore[attr-defined]
+        ChatRequest(message="英伟达股票", session_id="session-1")
+    )
+
+    session = memory.get("session-1")
+    assert session is not None
+    assert session.last_company == "NVIDIA"
+    assert session.last_symbol == "NVDA"

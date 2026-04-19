@@ -78,23 +78,23 @@ def test_query_rewrite_service_returns_rewritten_query() -> None:
     assert rewritten.startswith("NVIDIA NVDA")
 
 
-def test_query_rewrite_service_skips_simple_finance_knowledge() -> None:
+def test_query_rewrite_service_rewrites_short_finance_knowledge_term() -> None:
     service = QueryRewriteService(
         llm_client=FakeLLMClient(
             QueryRewriteResult(
-                rewritten_query="不应被使用的改写",
-                search_keywords=[],
+                rewritten_query="Nasdaq stock exchange definition",
+                search_keywords=["Nasdaq", "stock exchange"],
                 notes=[],
             )
         )
     )
 
     rewritten = service.rewrite(
-        "什么是市盈率？",
+        "什么是纳斯达克？",
         RouteDecision(intent=IntentType.FINANCE_KNOWLEDGE, need_rag=True, reason="test"),
     )
 
-    assert rewritten == "什么是市盈率？"
+    assert rewritten == "Nasdaq stock exchange definition"
 
 
 def test_answer_generation_service_replaces_summary_and_sections() -> None:

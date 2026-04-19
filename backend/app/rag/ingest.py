@@ -43,6 +43,9 @@ class KnowledgeBaseBuilder:
         chunks: list[KnowledgeChunk] = []
         for document in documents:
             parts = chunk_text(document["text"])
+            max_chunks = self._max_chunks_for_document(document)
+            if max_chunks is not None:
+                parts = parts[:max_chunks]
             for index, part in enumerate(parts):
                 if len(part) < 120:
                     continue
@@ -64,6 +67,20 @@ class KnowledgeBaseBuilder:
                     )
                 )
         return chunks
+
+    def _max_chunks_for_document(self, document: dict[str, Any]) -> int | None:
+        doc_type = str(document.get("doc_type") or "")
+        limits = {
+            "annual_report": 180,
+            "interim_report": 120,
+            "quarterly_financial_statements": 90,
+            "quarterly_results": 60,
+            "earnings_release": 60,
+            "quarterly_presentation": 50,
+            "knowledge_article": 24,
+            "glossary": 20,
+        }
+        return limits.get(doc_type)
 
     def _write_chunks(self, chunks: list[KnowledgeChunk]) -> None:
         self.index_dir.mkdir(parents=True, exist_ok=True)

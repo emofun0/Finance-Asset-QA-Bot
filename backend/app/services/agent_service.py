@@ -241,6 +241,7 @@ class AgentService:
                         "final_text": (plan.direct_response or "当前无法可靠回答该问题。").strip(),
                     },
                 )
+                self.session_memory_service.remember(request.session_id, plan, run_result.answer)
                 yield AgentStreamEvent(type="final", payload=run_result.message.model_dump(mode="json"))
                 return
 
@@ -346,6 +347,8 @@ class AgentService:
             limitations=["当前回答未调用数据工具或知识检索结果，请谨慎参考。"],
             route=RouteDecision(
                 intent=IntentType.UNKNOWN,
+                extracted_company=plan.company,
+                extracted_symbol=plan.symbol,
                 decision_source="agent",
                 reason=plan.reason or "Agent produced a direct response.",
             ),
@@ -370,7 +373,7 @@ class AgentService:
     def _run_request(self, request: ChatRequest) -> AgentRunResult:
         plan = self._plan_request(request)
         if plan.tool_name == "direct_response":
-            return self._build_run_result(
+            run_result = self._build_run_result(
                 request,
                 {
                     "request_message": request.message,
@@ -378,6 +381,8 @@ class AgentService:
                     "final_text": (plan.direct_response or "当前无法可靠回答该问题。").strip(),
                 },
             )
+            self.session_memory_service.remember(request.session_id, plan, run_result.answer)
+            return run_result
 
         cached_answer = self.session_memory_service.get_cached_answer(request.session_id, plan)
         if cached_answer is not None:
@@ -477,7 +482,33 @@ class AgentService:
             if not normalized.reason:
                 normalized.reason = "后端一致性校验：口语化“股价怎么样”优先视为近期走势查询。"
 
+        if normalized.tool_name == "direct_response" and self._looks_like_finance_knowledge_request(request_message):
+            normalized.tool_name = "finance_knowledge"
+            normalized.direct_response = None
+            if not normalized.rewritten_query:
+                normalized.rewritten_query = request_message.strip()
+            if not normalized.reason:
+                normalized.reason = "后端一致性校验：金融术语解释问题优先走 finance_knowledge 检索链路。"
+
         return normalized
+
+    def _looks_like_finance_knowledge_request(self, message: str) -> bool:
+        lowered = message.lower().strip()
+        finance_terms = [
+            "什么是",
+            "是什么意思",
+            "纳斯达克",
+            "纳指",
+            "大a",
+            "大a股",
+            "a股",
+            "市盈率",
+            "beta",
+            "pe ratio",
+            "price to earnings",
+            "price-to-earnings",
+        ]
+        return any(term in lowered for term in finance_terms)
 
     def _build_tool_request(
         self,
@@ -485,8 +516,12 @@ class AgentService:
         plan: AgentPlanningResult,
         related_answer: AnswerPayload | None,
     ) -> ChatRequest:
+        tool_request = request.model_copy(deep=True)
+        if plan.rewritten_query:
+            tool_request.metadata["retrieval_query"] = plan.rewritten_query.strip()
+
         if related_answer is None:
-            return request
+            return tool_request
 
         same_symbol = (
             not plan.symbol
@@ -497,9 +532,8 @@ class AgentService:
             or (related_answer.route.extracted_company or "").strip().lower() == (plan.company or "").strip().lower()
         )
         if not same_symbol and not same_company:
-            return request
+            return tool_request
 
-        tool_request = request.model_copy(deep=True)
         tool_request.metadata["memory_context"] = {
             "previous_answer": related_answer.model_dump(mode="json"),
         }

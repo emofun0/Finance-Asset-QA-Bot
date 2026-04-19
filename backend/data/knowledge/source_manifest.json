@@ -17,24 +17,6 @@
     "doc_type": "glossary"
   },
   {
-    "doc_id": "zh_core_finance_concepts",
-    "title": "金融核心概念术语卡",
-    "url": "manual://zh-core-finance-concepts",
-    "source_name": "Project Curated Knowledge",
-    "language": "zh",
-    "doc_type": "glossary",
-    "inline_text": "市盈率，也常写作 PE ratio 或 Price-to-Earnings Ratio，表示股票价格与每股收益之间的倍数关系。市盈率通常用来衡量市场愿意为公司当前盈利支付多高的价格。市盈率较高，往往意味着市场对未来增长抱有更高预期，但也可能意味着估值更贵。收入又称营业收入，表示企业在一定期间内通过销售商品或提供服务取得的总流入，是利润计算的起点。净利润是企业扣除营业成本、期间费用、利息、税费以及其他损益项目后最终剩余的利润，能够反映企业真正赚到多少。收入和净利润的区别在于，收入描述的是规模，净利润描述的是在扣除各项成本费用后的最终盈利结果。一家公司收入增长，不代表净利润一定同步增长，因为成本率、费用率、税负和一次性损益都可能发生变化。"
-  },
-  {
-    "doc_id": "en_core_finance_terms",
-    "title": "Core Finance Terms Reference",
-    "url": "manual://en-core-finance-terms",
-    "source_name": "Project Curated Knowledge",
-    "language": "en",
-    "doc_type": "glossary",
-    "inline_text": "The price-to-earnings ratio, also called the PE ratio, compares a company's share price with its earnings per share and is often used as a shorthand measure of valuation. Revenue refers to the gross inflow a company earns from selling goods or providing services before most costs are deducted. Net income, or net profit, measures what remains after operating costs, interest, taxes, and other gains or losses are recognized. Revenue shows business scale, while net income shows bottom-line profitability. A company can grow revenue while net income declines if margins weaken, operating expenses rise, or one-off charges increase."
-  },
-  {
     "doc_id": "tencent_2025_annual_report",
     "title": "腾讯 2025 年度报告",
     "url": "https://static.www.tencent.com/uploads/2026/04/09/5c38a9ec3c5695da42c1534d63e4be0b.pdf",
@@ -196,5 +178,53 @@
     "doc_type": "quarterly_results",
     "company": "Tesla",
     "symbol": "TSLA"
+  },
+  {
+    "doc_id": "nvidia_2025_q1_earnings_release",
+    "title": "NVIDIA Fiscal 2026 First Quarter Earnings Highlights",
+    "url": "https://investor.nvidia.com/",
+    "source_name": "NVIDIA Investor Relations",
+    "language": "en",
+    "doc_type": "earnings_release",
+    "company": "NVIDIA",
+    "symbol": "NVDA",
+    "published_at": "2025-05-28",
+    "inline_text": "NVIDIA reported fiscal 2026 first quarter revenue of 44.1 billion U.S. dollars, up sharply year over year, driven primarily by data center demand. Data Center revenue reached 39.1 billion U.S. dollars and remained the core growth engine. The company said demand for AI infrastructure and accelerated computing continued to support strong customer spending. Gaming, professional visualization and automotive contributed additional revenue, but the business mix was still dominated by data center products. Management emphasized continued investment in AI systems, networking and platform software while highlighting supply ramp and customer adoption across hyperscalers and enterprises."
+  },
+  {
+    "doc_id": "microsoft_2025_q3_earnings_release",
+    "title": "Microsoft Fiscal 2025 Third Quarter Earnings Highlights",
+    "url": "https://www.microsoft.com/en-us/Investor/earnings/",
+    "source_name": "Microsoft Investor Relations",
+    "language": "en",
+    "doc_type": "earnings_release",
+    "company": "Microsoft",
+    "symbol": "MSFT",
+    "published_at": "2025-04-30",
+    "inline_text": "Microsoft reported fiscal 2025 third quarter revenue of 70.1 billion U.S. dollars. Microsoft Cloud revenue was 42.4 billion U.S. dollars, reflecting continued enterprise demand for cloud services and AI-related workloads. The company said Azure and other cloud services revenue again grew strongly, supported by capacity expansion and AI adoption. Productivity and Business Processes as well as Intelligent Cloud remained the largest contributors to revenue and operating profit. Management highlighted durable commercial bookings, large customer commitments and ongoing investment in AI infrastructure."
+  },
+  {
+    "doc_id": "amazon_2025_q1_earnings_release",
+    "title": "Amazon First Quarter 2025 Earnings Highlights",
+    "url": "https://www.aboutamazon.com/news/company-news",
+    "source_name": "Amazon News",
+    "language": "en",
+    "doc_type": "earnings_release",
+    "company": "Amazon",
+    "symbol": "AMZN",
+    "published_at": "2025-05-01",
+    "inline_text": "Amazon reported first quarter 2025 net sales of 143.3 billion U.S. dollars, with growth supported by online stores, third-party seller services, advertising and AWS. AWS revenue reached 29.3 billion U.S. dollars and remained Amazon's main profit engine. Operating income improved year over year as fulfillment efficiency and cloud scale supported margins. The company highlighted demand for generative AI services on AWS, continued infrastructure investment and expanding advertising monetization across its consumer ecosystem."
+  },
+  {
+    "doc_id": "alphabet_2025_q1_earnings_release",
+    "title": "Alphabet First Quarter 2025 Earnings Highlights",
+    "url": "https://abc.xyz/investor/",
+    "source_name": "Alphabet Investor Relations",
+    "language": "en",
+    "doc_type": "earnings_release",
+    "company": "Alphabet",
+    "symbol": "GOOG",
+    "published_at": "2025-04-24",
+    "inline_text": "Alphabet reported first quarter 2025 revenue of 90.2 billion U.S. dollars. Google Search and other advertising businesses remained the largest revenue contributor, while Google Cloud continued to expand with stronger profitability. The company said cloud demand was driven by data analytics, infrastructure and AI products. Operating margin improved year over year as cost discipline and scale benefits supported earnings. Management also highlighted ongoing capital expenditure to support AI infrastructure and product innovation."
   }
 ]

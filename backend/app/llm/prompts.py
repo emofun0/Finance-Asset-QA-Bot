@@ -127,7 +127,7 @@ def build_agent_planning_prompt(message: str, conversation_context: str | None =
         "5. 财报摘要、业绩摘要类问题用 report_summary。\n"
         "6. 若无法可靠调用工具，就用 direct_response 并给出简短说明。\n"
         "7. thought 要简洁描述你准备做什么，不要泄露隐私或长篇推理。\n"
-        "8. rewritten_query 仅在 finance_knowledge / report_summary 时可填写。\n"
+        "8. rewritten_query 仅在 finance_knowledge / report_summary 时可填写；它必须是适合检索引擎的查询，不要写成长句，必要时补上英文实体名、股票代码、报告类型或常见英文说法。\n"
         "9. 日期用 ISO 格式，如 2026-01-15；不确定时留空。\n"
         "10. 若 company 与 symbol 只确定一个，另一个字段可以留空。\n"
         "11. 涉及时间范围时，不要换算成天数；请填写 time_length 和 time_unit，例如最近三年 => time_length=3, time_unit=year。\n"

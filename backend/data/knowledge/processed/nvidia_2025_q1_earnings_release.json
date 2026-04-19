@@ -1,0 +1,14 @@
+{
+  "doc_id": "nvidia_2025_q1_earnings_release",
+  "title": "NVIDIA Fiscal 2026 First Quarter Earnings Highlights",
+  "url": "https://investor.nvidia.com/",
+  "source_name": "NVIDIA Investor Relations",
+  "language": "en",
+  "doc_type": "earnings_release",
+  "company": "NVIDIA",
+  "symbol": "NVDA",
+  "published_at": "2025-05-28",
+  "inline_text": "NVIDIA reported fiscal 2026 first quarter revenue of 44.1 billion U.S. dollars, up sharply year over year, driven primarily by data center demand. Data Center revenue reached 39.1 billion U.S. dollars and remained the core growth engine. The company said demand for AI infrastructure and accelerated computing continued to support strong customer spending. Gaming, professional visualization and automotive contributed additional revenue, but the business mix was still dominated by data center products. Management emphasized continued investment in AI systems, networking and platform software while highlighting supply ramp and customer adoption across hyperscalers and enterprises.",
+  "raw_path": "/home/ypw/Codes/Finance_Asset_QA_System/backend/data/knowledge/raw/nvidia_2025_q1_earnings_release.txt",
+  "text": "NVIDIA reported fiscal 2026 first quarter revenue of 44.1 billion U.S. dollars, up sharply year over year, driven primarily by data center demand. Data Center revenue reached 39.1 billion U.S. dollars and remained the core growth engine. The company said demand for AI infrastructure and accelerated computing continued to support strong customer spending. Gaming, professional visualization and automotive contributed additional revenue, but the business mix was still dominated by data center products. Management emphasized continued investment in AI systems, networking and platform software while highlighting supply ramp and customer adoption across hyperscalers and enterprises."
+}

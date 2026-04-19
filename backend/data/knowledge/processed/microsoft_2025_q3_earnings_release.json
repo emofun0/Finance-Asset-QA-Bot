@@ -1,0 +1,14 @@
+{
+  "doc_id": "microsoft_2025_q3_earnings_release",
+  "title": "Microsoft Fiscal 2025 Third Quarter Earnings Highlights",
+  "url": "https://www.microsoft.com/en-us/Investor/earnings/",
+  "source_name": "Microsoft Investor Relations",
+  "language": "en",
+  "doc_type": "earnings_release",
+  "company": "Microsoft",
+  "symbol": "MSFT",
+  "published_at": "2025-04-30",
+  "inline_text": "Microsoft reported fiscal 2025 third quarter revenue of 70.1 billion U.S. dollars. Microsoft Cloud revenue was 42.4 billion U.S. dollars, reflecting continued enterprise demand for cloud services and AI-related workloads. The company said Azure and other cloud services revenue again grew strongly, supported by capacity expansion and AI adoption. Productivity and Business Processes as well as Intelligent Cloud remained the largest contributors to revenue and operating profit. Management highlighted durable commercial bookings, large customer commitments and ongoing investment in AI infrastructure.",
+  "raw_path": "/home/ypw/Codes/Finance_Asset_QA_System/backend/data/knowledge/raw/microsoft_2025_q3_earnings_release.txt",
+  "text": "Microsoft reported fiscal 2025 third quarter revenue of 70.1 billion U.S. dollars. Microsoft Cloud revenue was 42.4 billion U.S. dollars, reflecting continued enterprise demand for cloud services and AI-related workloads. The company said Azure and other cloud services revenue again grew strongly, supported by capacity expansion and AI adoption. Productivity and Business Processes as well as Intelligent Cloud remained the largest contributors to revenue and operating profit. Management highlighted durable commercial bookings, large customer commitments and ongoing investment in AI infrastructure."
+}

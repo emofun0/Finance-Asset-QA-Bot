@@ -84,6 +84,58 @@ class FakeWebSearchTool:
         ]
 
 
+class NasdaqWebSearchTool:
+    def search_finance_knowledge(self, query: str, top_k: int = 3) -> list[FakeRetrievalResult]:
+        return [
+            FakeRetrievalResult(
+                chunk_id="web::nasdaq",
+                score=0.93,
+                content="Nasdaq is a U.S. stock exchange known for listing many technology and growth companies.",
+                metadata={
+                    "title": "Investor.gov Glossary - Nasdaq",
+                    "doc_type": "glossary",
+                    "url": "https://www.investor.gov/nasdaq",
+                },
+            )
+        ]
+
+
+class BigAWebSearchTool:
+    def search_finance_knowledge(self, query: str, top_k: int = 3) -> list[FakeRetrievalResult]:
+        return [
+            FakeRetrievalResult(
+                chunk_id="web::big-a",
+                score=0.94,
+                content="A股通常指在中国内地证券交易所上市、以人民币计价和交易的普通股；在口语中“大A”常用来指代整个A股市场。",
+                metadata={
+                    "title": "Investor Education - A股市场基础概念",
+                    "doc_type": "glossary",
+                    "url": "https://example.com/a-share-market",
+                },
+            )
+        ]
+
+
+class ShortSellingWebSearchTool:
+    def search_finance_knowledge(self, query: str, top_k: int = 3) -> list[FakeRetrievalResult]:
+        return [
+            FakeRetrievalResult(
+                chunk_id="web::short-selling",
+                score=0.96,
+                content=(
+                    "做空 (Short Selling) | Vantage Home Right Arrow Terminology 做空 (Short Selling). "
+                    "Short selling is a trading strategy that involves borrowing an asset, selling it first, "
+                    "and buying it back later after the price falls to return it to the lender."
+                ),
+                metadata={
+                    "title": "做空 (Short Selling) | Vantage",
+                    "doc_type": "glossary",
+                    "url": "https://example.com/short-selling-definition",
+                },
+            )
+        ]
+
+
 def build_service() -> KnowledgeQAService:
     return KnowledgeQAService(retriever=FakeKnowledgeRetriever())
 
@@ -297,6 +349,63 @@ def test_finance_knowledge_uses_web_when_local_result_is_irrelevant() -> None:
     )
 
     assert response.objective_data["source_mode"] == "web_fallback"
+
+
+def test_finance_knowledge_uses_web_for_chinese_term_when_local_result_is_irrelevant() -> None:
+    service = KnowledgeQAService(
+        retriever=IrrelevantKnowledgeRetriever(),
+        web_search_tool=NasdaqWebSearchTool(),
+    )
+
+    response = service.answer(
+        ChatRequest(message="什么是纳斯达克"),
+        RouteDecision(
+            intent=IntentType.FINANCE_KNOWLEDGE,
+            need_rag=True,
+            reason="test",
+        ),
+    )
+
+    assert response.objective_data["source_mode"] == "web_fallback"
+    assert response.sources[0].name == "Investor.gov Glossary - Nasdaq"
+
+
+def test_finance_knowledge_returns_curated_glossary_for_big_a() -> None:
+    service = KnowledgeQAService(
+        retriever=IrrelevantKnowledgeRetriever(),
+        web_search_tool=BigAWebSearchTool(),
+    )
+
+    response = service.answer(
+        ChatRequest(message="什么是大A"),
+        RouteDecision(
+            intent=IntentType.FINANCE_KNOWLEDGE,
+            need_rag=True,
+            reason="test",
+        ),
+    )
+
+    assert "A股" in response.summary
+    assert response.sources[0].name == "Investor Education - A股市场基础概念"
+
+
+def test_finance_knowledge_short_selling_summary_contains_actual_definition() -> None:
+    service = KnowledgeQAService(
+        retriever=EmptyKnowledgeRetriever(),
+        web_search_tool=ShortSellingWebSearchTool(),
+    )
+
+    response = service.answer(
+        ChatRequest(message="什么是做空"),
+        RouteDecision(
+            intent=IntentType.FINANCE_KNOWLEDGE,
+            need_rag=True,
+            reason="test",
+        ),
+    )
+
+    assert "借入并卖出" in response.summary
+    assert any("买回" in item.lower() or "return it to the lender" in item.lower() for item in response.analysis)
 
 
 def test_finance_knowledge_can_answer_quarterly_vs_annual_report_difference() -> None:
