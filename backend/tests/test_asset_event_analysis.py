@@ -9,6 +9,9 @@ from app.tools.market_data_tool import MarketSnapshot, PricePoint
 
 
 class FakeMarketDataTool:
+    def __init__(self) -> None:
+        self.get_history_calls = 0
+
     def get_snapshot(self, symbol: str) -> MarketSnapshot:
         return MarketSnapshot(
             symbol=symbol,
@@ -21,6 +24,7 @@ class FakeMarketDataTool:
         )
 
     def get_history(self, symbol: str, days: int) -> list[PricePoint]:
+        self.get_history_calls += 1
         start = datetime(2026, 4, 10, 16, 0, tzinfo=UTC)
         prices = [100.0, 102.0, 101.0, 106.0, 108.0, 110.0]
         return [PricePoint(timestamp=start + timedelta(days=index), close=price) for index, price in enumerate(prices)]
@@ -283,3 +287,68 @@ def test_asset_event_analysis_falls_back_when_llm_summary_fails() -> None:
     )
 
     assert any("相关报道提到" in item or "相关事件线索" in item for item in response.analysis)
+
+
+def test_asset_event_analysis_can_reuse_previous_trend_window_from_memory_context() -> None:
+    market_data_tool = FakeMarketDataTool()
+    service = AssetQAService(
+        market_data_tool=market_data_tool,
+        web_search_tool=FakeIntelWebSearchTool(),
+        llm_client=FakeEventObservationLLM(),
+    )
+
+    response = service.answer(
+        ChatRequest(
+            message="为什么涨这么多？",
+            metadata={
+                "memory_context": {
+                    "previous_answer": {
+                        "question_type": "asset_trend",
+                        "summary": "INTC 最近 30 天整体上涨。",
+                        "objective_data": {
+                            "symbol": "INTC",
+                            "time_range_days": 30,
+                            "start_price": 100.0,
+                            "end_price": 110.0,
+                            "change_pct": 10.0,
+                            "points": [
+                                {"timestamp": "2026-04-10T16:00:00+00:00", "close": 100.0},
+                                {"timestamp": "2026-04-15T16:00:00+00:00", "close": 106.0},
+                                {"timestamp": "2026-04-18T16:00:00+00:00", "close": 110.0},
+                            ],
+                        },
+                        "route": {
+                            "intent": "asset_trend",
+                            "need_market_data": True,
+                            "need_rag": False,
+                            "need_news": False,
+                            "extracted_symbol": "INTC",
+                            "extracted_company": "Intel",
+                            "time_range_days": 30,
+                            "event_date": None,
+                            "event_date_is_inferred": False,
+                            "decision_source": "agent",
+                            "reason": "test",
+                        },
+                        "request_message": "intel股价怎么样",
+                        "sources": [],
+                        "limitations": [],
+                        "analysis": [],
+                    }
+                }
+            },
+        ),
+        RouteDecision(
+            intent=IntentType.ASSET_EVENT_ANALYSIS,
+            need_market_data=True,
+            need_news=True,
+            extracted_company="Intel",
+            extracted_symbol="INTC",
+            time_range_days=30,
+            reason="test",
+        ),
+    )
+
+    assert market_data_tool.get_history_calls == 0
+    assert response.objective_data["time_range_days"] == 30
+    assert response.analysis[0].startswith("最近窗口内价格由约 100.00")

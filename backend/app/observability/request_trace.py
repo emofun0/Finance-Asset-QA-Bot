@@ -17,12 +17,14 @@ _current_trace: ContextVar["RequestTraceRecorder | None"] = ContextVar("current_
 
 
 class RequestTraceRecorder:
-    def __init__(self, request_id: str, request_payload: dict[str, Any], route_path: str) -> None:
+    def __init__(self, request_id: str, request_payload: dict[str, Any], route_path: str, session_id: str | None = None) -> None:
         self.request_id = request_id
-        self._path = Path(settings.trace_log_dir) / f"{request_id}.json"
+        self.session_id = session_id
+        self._path = self._build_trace_path(request_id=request_id, session_id=session_id)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._data: dict[str, Any] = {
             "request_id": request_id,
+            "session_id": session_id,
             "route_path": route_path,
             "started_at": self._now(),
             "request": self._serialize(request_payload),
@@ -56,6 +58,16 @@ class RequestTraceRecorder:
             encoding="utf-8",
         )
 
+    def _build_trace_path(self, *, request_id: str, session_id: str | None) -> Path:
+        session_key = self._normalize_session_key(session_id)
+        return Path(settings.trace_log_dir) / session_key / f"{request_id}.json"
+
+    def _normalize_session_key(self, session_id: str | None) -> str:
+        if not session_id:
+            return "__anonymous__"
+        safe = "".join(ch for ch in session_id if ch.isalnum() or ch in {"-", "_"})
+        return safe or "__anonymous__"
+
     def _serialize(self, value: Any) -> Any:
         if isinstance(value, BaseModel):
             return value.model_dump(mode="json")
@@ -78,11 +90,17 @@ class RequestTraceRecorder:
 
 
 @contextmanager
-def request_trace(request_id: str, request_payload: dict[str, Any], route_path: str) -> Iterator[RequestTraceRecorder]:
+def request_trace(
+    request_id: str,
+    request_payload: dict[str, Any],
+    route_path: str,
+    session_id: str | None = None,
+) -> Iterator[RequestTraceRecorder]:
     recorder = RequestTraceRecorder(
         request_id=request_id,
         request_payload=request_payload,
         route_path=route_path,
+        session_id=session_id,
     )
     token = _current_trace.set(recorder)
     recorder.record("request.received", request_payload)
@@ -106,7 +124,14 @@ def trace_event(stage: str, payload: Any) -> None:
 
 
 def get_trace_file_path(request_id: str) -> Path:
-    return Path(settings.trace_log_dir) / f"{request_id}.json"
+    trace_dir = Path(settings.trace_log_dir)
+    direct_path = trace_dir / f"{request_id}.json"
+    if direct_path.exists():
+        return direct_path
+
+    for path in trace_dir.rglob(f"{request_id}.json"):
+        return path
+    return trace_dir / f"{request_id}.json"
 
 
 def read_trace(request_id: str) -> dict[str, Any]:
@@ -119,7 +144,7 @@ def list_traces(limit: int = 20) -> list[dict[str, Any]]:
     if not trace_dir.exists():
         return []
 
-    files = sorted(trace_dir.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)[:limit]
+    files = sorted(trace_dir.rglob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)[:limit]
     summaries: list[dict[str, Any]] = []
     for path in files:
         try:
@@ -129,6 +154,7 @@ def list_traces(limit: int = 20) -> list[dict[str, Any]]:
         summaries.append(
             {
                 "request_id": payload.get("request_id"),
+                "session_id": payload.get("session_id"),
                 "started_at": payload.get("started_at"),
                 "finished_at": payload.get("finished_at"),
                 "status": payload.get("status"),

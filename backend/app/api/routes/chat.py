@@ -7,9 +7,9 @@ from fastapi.responses import StreamingResponse
 
 from app.observability.request_trace import request_trace
 from app.core.errors import AppError
-from app.api.deps import get_agent_service
-from app.schemas.request import ChatRequest
-from app.schemas.response import ChatResponse, StandardResponse
+from app.api.deps import get_agent_service, get_session_memory_service
+from app.schemas.request import ChatRequest, SessionResetRequest
+from app.schemas.response import ChatResponse, SessionResetPayload, StandardResponse
 
 router = APIRouter(prefix="/api/v1")
 
@@ -22,7 +22,7 @@ def chat(request: ChatRequest) -> StandardResponse:
         provider=llm_selection.provider if llm_selection else None,
         model=llm_selection.model if llm_selection else None,
     )
-    with request_trace(request_id, request.model_dump(mode="json"), "/api/v1/chat") as trace:
+    with request_trace(request_id, request.model_dump(mode="json"), "/api/v1/chat", session_id=request.session_id) as trace:
         response = StandardResponse(
             request_id=request_id,
             success=True,
@@ -30,6 +30,20 @@ def chat(request: ChatRequest) -> StandardResponse:
         )
         trace.finalize(status="success", response=response)
         return response
+
+
+@router.post("/chat/session/reset")
+def reset_chat_session(request: SessionResetRequest) -> dict:
+    request_id = str(uuid4())
+    session_memory_service = get_session_memory_service()
+    cleared = session_memory_service.clear(request.session_id)
+    response = {
+        "request_id": request_id,
+        "success": True,
+        "data": SessionResetPayload(session_id=request.session_id, cleared=cleared).model_dump(mode="json"),
+        "error": None,
+    }
+    return response
 
 
 def _sse(event: str, payload: dict) -> str:
@@ -60,7 +74,12 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
 
     async def event_generator():
         yield _sse("meta", {"request_id": request_id})
-        with request_trace(request_id, request.model_dump(mode="json"), "/api/v1/chat/stream") as trace:
+        with request_trace(
+            request_id,
+            request.model_dump(mode="json"),
+            "/api/v1/chat/stream",
+            session_id=request.session_id,
+        ) as trace:
             try:
                 stream_events = agent_service.stream_chat(request)
             except AppError as exc:

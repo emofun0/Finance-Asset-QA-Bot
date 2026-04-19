@@ -13,9 +13,13 @@ from app.services.knowledge_qa_service import KnowledgeQAService
 from app.services.llm_catalog_service import LLMCatalogService
 from app.services.query_rewrite_service import QueryRewriteService
 from app.services.router_service import RouterService
+from app.services.session_memory_service import SessionMemoryService
 from app.services.verification_service import VerificationService
 from app.tools.market_data_tool import MarketDataTool
 from app.tools.web_search_tool import OfficialWebSearchTool
+
+
+_session_memory_service = SessionMemoryService()
 
 
 def get_settings():
@@ -73,6 +77,7 @@ def get_agent_service(provider: str | None = None, model: str | None = None) -> 
         knowledge_qa_service=knowledge_qa_service,
         chat_presenter_service=chat_presenter_service,
         fallback_answer_service=fallback_answer_service,
+        session_memory_service=get_session_memory_service(),
     )
 
 
@@ -114,3 +119,7 @@ def get_llm_catalog_service() -> LLMCatalogService:
 
 def get_chat_presenter_service(asset_qa_service: AssetQAService | None = None) -> ChatPresenterService:
     return ChatPresenterService(asset_qa_service=asset_qa_service or get_asset_qa_service())
+
+
+def get_session_memory_service() -> SessionMemoryService:
+    return _session_memory_service

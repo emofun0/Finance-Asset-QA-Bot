@@ -47,6 +47,18 @@ export interface StandardResponse {
   error: ErrorDetail | null;
 }
 
+export interface SessionResetPayload {
+  session_id: string;
+  cleared: boolean;
+}
+
+export interface SessionResetResponse {
+  request_id: string;
+  success: boolean;
+  data: SessionResetPayload | null;
+  error: ErrorDetail | null;
+}
+
 export interface LLMSelection {
   provider: "ollama" | "openai";
   model: string;

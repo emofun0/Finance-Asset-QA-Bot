@@ -1,12 +1,13 @@
 import asyncio
 
 from app.api.routes import chat as chat_route
-from app.schemas.request import ChatRequest, LLMSelection
+from app.schemas.request import ChatRequest, LLMSelection, SessionResetRequest
 from app.schemas.domain import IntentType, RouteDecision
 from app.schemas.response import AnswerPayload, ChatMessagePayload, SourceItem
 from app.llm.contracts import AgentPlanningResult
 from app.services.agent_service import AgentService, AgentStreamEvent, AgentToolExecutor
 from app.services.chat_presenter_service import ChatPresenterService
+from app.services.session_memory_service import SessionMemoryService
 
 
 class FakeAgentService:
@@ -138,6 +139,7 @@ def test_agent_service_falls_back_when_graph_is_disabled() -> None:
         knowledge_qa_service=DummyToolService(),  # type: ignore[arg-type]
         chat_presenter_service=None,  # type: ignore[arg-type]
         fallback_answer_service=FakeFallbackAnswerService(),  # type: ignore[arg-type]
+        session_memory_service=SessionMemoryService(),
     )
     service.graph = None
     service.model = None
@@ -182,6 +184,7 @@ def test_agent_service_normalizes_price_query_with_time_range_to_trend() -> None
         knowledge_qa_service=DummyToolService(),  # type: ignore[arg-type]
         chat_presenter_service=ChatPresenterService(asset_qa_service=RecordingAssetQAService()),  # type: ignore[arg-type]
         fallback_answer_service=FakeFallbackAnswerService(),  # type: ignore[arg-type]
+        session_memory_service=SessionMemoryService(),
     )
 
     plan = service._normalize_plan(  # type: ignore[attr-defined]
@@ -218,3 +221,153 @@ def test_chat_presenter_uses_plain_text_numbered_points() -> None:
     assert "要点：" in message.text
     assert "\n1. 样本起点价格约为 31.83，终点价格约为 68.50。" in message.text
     assert "- " not in message.text
+
+
+def test_reset_chat_session_clears_memory(monkeypatch) -> None:
+    memory = SessionMemoryService()
+    monkeypatch.setattr(chat_route, "get_session_memory_service", lambda: memory)
+
+    cached_answer = AnswerPayload(
+        question_type=IntentType.ASSET_TREND,
+        request_message="intel股价怎么样",
+        summary="INTC 最近 30 天整体上涨。",
+        objective_data={"symbol": "INTC", "time_range_days": 30},
+        analysis=[],
+        sources=[],
+        limitations=[],
+        route=RouteDecision(intent=IntentType.ASSET_TREND, need_market_data=True, extracted_company="Intel", extracted_symbol="INTC", reason="test"),
+    )
+    plan = AgentPlanningResult(
+        tool_name="asset_trend",
+        thought="查询 Intel 股价趋势",
+        company="Intel",
+        symbol="INTC",
+        time_length=30,
+        time_unit="day",
+        reason="test",
+    )
+    memory.remember("session-1", plan, cached_answer)
+
+    response = chat_route.reset_chat_session(SessionResetRequest(session_id="session-1"))
+
+    assert response["success"] is True
+    assert response["data"]["cleared"] is True
+    assert memory.get("session-1") is None
+
+
+def test_session_memory_fills_subject_and_reuses_cached_answer() -> None:
+    memory = SessionMemoryService()
+    cached_answer = AnswerPayload(
+        question_type=IntentType.ASSET_TREND,
+        request_message="intel股价怎么样",
+        summary="INTC 最近 30 天整体上涨。",
+        objective_data={"symbol": "INTC", "time_range_days": 30},
+        analysis=["样本起点价格约为 50，终点价格约为 60。"],
+        sources=[],
+        limitations=[],
+        route=RouteDecision(intent=IntentType.ASSET_TREND, need_market_data=True, extracted_company="Intel", extracted_symbol="INTC", reason="test"),
+    )
+    first_plan = AgentPlanningResult(
+        tool_name="asset_trend",
+        thought="查询 Intel 股价趋势",
+        company="Intel",
+        symbol="INTC",
+        time_length=30,
+        time_unit="day",
+        reason="test",
+    )
+    memory.remember("session-1", first_plan, cached_answer)
+
+    followup_plan = AgentPlanningResult(
+        tool_name="asset_trend",
+        thought="延续上文主体",
+        company=None,
+        symbol=None,
+        time_length=30,
+        time_unit="day",
+        reason="test",
+    )
+    filled_plan = memory.fill_subject_from_memory("session-1", followup_plan)
+
+    assert filled_plan.company == "Intel"
+    assert filled_plan.symbol == "INTC"
+    assert filled_plan.time_length == 30
+    assert filled_plan.time_unit == "day"
+    assert memory.get_cached_answer("session-1", filled_plan) is not None
+
+
+def test_agent_service_normalizes_colloquial_price_question_to_trend() -> None:
+    service = AgentService(
+        provider="ollama",
+        model="test-model",
+        asset_qa_service=DummyToolService(),  # type: ignore[arg-type]
+        knowledge_qa_service=DummyToolService(),  # type: ignore[arg-type]
+        chat_presenter_service=ChatPresenterService(asset_qa_service=RecordingAssetQAService()),  # type: ignore[arg-type]
+        fallback_answer_service=FakeFallbackAnswerService(),  # type: ignore[arg-type]
+        session_memory_service=SessionMemoryService(),
+    )
+
+    plan = service._normalize_plan(  # type: ignore[attr-defined]
+        "intel股价怎么样",
+        AgentPlanningResult(
+            tool_name="asset_price",
+            thought="查看 Intel 股价",
+            company="Intel",
+            symbol="INTC",
+            reason="",
+        ),
+    )
+
+    assert plan.tool_name == "asset_trend"
+    assert plan.time_length == 30
+    assert plan.time_unit == "day"
+
+
+def test_agent_service_inherits_previous_time_range_for_followup_reason_question() -> None:
+    memory = SessionMemoryService()
+    previous_answer = AnswerPayload(
+        question_type=IntentType.ASSET_TREND,
+        request_message="最近一年呢",
+        summary="INTC 最近 365 天整体上涨。",
+        objective_data={"symbol": "INTC", "time_range_days": 365},
+        analysis=[],
+        sources=[],
+        limitations=[],
+        route=RouteDecision(intent=IntentType.ASSET_TREND, need_market_data=True, extracted_company="Intel", extracted_symbol="INTC", reason="test"),
+    )
+    previous_plan = AgentPlanningResult(
+        tool_name="asset_trend",
+        thought="查询 Intel 最近一年走势",
+        company="Intel",
+        symbol="INTC",
+        time_length=1,
+        time_unit="year",
+        reason="test",
+    )
+    memory.remember("session-1", previous_plan, previous_answer)
+
+    service = AgentService(
+        provider="ollama",
+        model="test-model",
+        asset_qa_service=DummyToolService(),  # type: ignore[arg-type]
+        knowledge_qa_service=DummyToolService(),  # type: ignore[arg-type]
+        chat_presenter_service=ChatPresenterService(asset_qa_service=RecordingAssetQAService()),  # type: ignore[arg-type]
+        fallback_answer_service=FakeFallbackAnswerService(),  # type: ignore[arg-type]
+        session_memory_service=memory,
+    )
+
+    inherited = service._inherit_time_range_from_memory(  # type: ignore[attr-defined]
+        ChatRequest(message="为啥涨这么多", session_id="session-1"),
+        AgentPlanningResult(
+            tool_name="asset_event_analysis",
+            thought="分析上涨原因",
+            company="Intel",
+            symbol="INTC",
+            time_length=1,
+            time_unit="month",
+            reason="test",
+        ),
+    )
+
+    assert inherited.time_length == 365
+    assert inherited.time_unit == "day"

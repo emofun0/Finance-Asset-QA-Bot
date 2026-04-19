@@ -74,11 +74,21 @@ a {
 .header-controls {
   display: flex;
   gap: 12px;
-  min-width: min(460px, 100%);
+  align-items: center;
+  flex-wrap: wrap;
 }
 
-.header-controls .ant-select {
-  flex: 1 1 0;
+.session-pill {
+  max-width: min(52vw, 420px);
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(24, 33, 47, 0.08);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--muted);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .top-alert {
@@ -161,12 +171,6 @@ a {
 
 .message-attachment {
   margin-top: 14px;
-}
-
-.message-meta {
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 0.8rem;
 }
 
 .source-list {
@@ -272,9 +276,39 @@ a {
 .composer-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-top: 10px;
+}
+
+.composer-select {
+  min-width: 0;
+}
+
+.provider-select {
+  width: 160px;
+  flex: 0 0 160px;
+}
+
+.model-select {
+  width: 220px;
+  max-width: 220px;
+  flex: 0 1 220px;
+}
+
+.model-select .ant-select-selector,
+.provider-select .ant-select-selector {
+  width: 100%;
+}
+
+.model-select .ant-select-selection-item,
+.model-select .ant-select-selection-placeholder,
+.provider-select .ant-select-selection-item,
+.provider-select .ant-select-selection-placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 900px) {
@@ -294,6 +328,14 @@ a {
   .header-controls,
   .inline-chart-header {
     display: grid;
+  }
+
+  .session-pill,
+  .provider-select,
+  .model-select {
+    width: 100%;
+    max-width: 100%;
+    flex-basis: 100%;
   }
 
   .message-bubble {

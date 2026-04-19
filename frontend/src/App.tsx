@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Empty, Input, Select, Spin } from "antd";
 
 import { TrendChart } from "./components/TrendChart";
-import { fetchLLMModels, streamChat } from "./services/api";
+import { fetchLLMModels, resetChatSession, streamChat } from "./services/api";
 import type {
   ChatMessagePayload,
   ChatStreamEvent,
@@ -26,13 +26,32 @@ interface ConversationMessage {
   text: string;
   sources: SourceItem[];
   chart: ChatMessagePayload["chart"];
-  requestId?: string;
   status: "streaming" | "done" | "error";
   transient?: boolean;
 }
 
 function createId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getOrCreateSessionId(): string {
+  const storageKey = "finance-qa-session-id";
+  const existing = window.localStorage.getItem(storageKey);
+  if (existing) {
+    return existing;
+  }
+  const generated =
+    typeof window.crypto?.randomUUID === "function"
+      ? window.crypto.randomUUID()
+      : `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  window.localStorage.setItem(storageKey, generated);
+  return generated;
+}
+
+function createSessionId(): string {
+  return typeof window.crypto?.randomUUID === "function"
+    ? window.crypto.randomUUID()
+    : `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function ChatBubble({ message }: { message: ConversationMessage }) {
@@ -69,7 +88,6 @@ function ChatBubble({ message }: { message: ConversationMessage }) {
             </div>
           </div>
         ) : null}
-        {isAssistant && message.requestId ? <div className="message-meta">#{message.requestId}</div> : null}
       </div>
     </div>
   );
@@ -86,6 +104,7 @@ function App() {
   const [selectedModel, setSelectedModel] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const sessionIdRef = useRef<string>(getOrCreateSessionId());
 
   useEffect(() => {
     let active = true;
@@ -98,14 +117,22 @@ function App() {
           return;
         }
         const enabledProviders = response.providers.filter((provider) => provider.enabled && provider.models.length > 0);
+        const preferredOpenAI = enabledProviders.find(
+          (provider) => provider.provider === "openai" && provider.models.some((model) => model.id === "gpt-5.4-mini"),
+        );
         const initialProvider =
+          preferredOpenAI?.provider ??
           enabledProviders.find((provider) => provider.provider === response.default_provider)?.provider ??
           enabledProviders[0]?.provider ??
           response.default_provider;
         const providerCatalog = response.providers.find((provider) => provider.provider === initialProvider) ?? null;
+        const initialModel =
+          initialProvider === "openai" && providerCatalog?.models.some((model) => model.id === "gpt-5.4-mini")
+            ? "gpt-5.4-mini"
+            : providerCatalog?.default_model ?? providerCatalog?.models[0]?.id ?? "";
         setCatalog(response);
         setSelectedProvider(initialProvider);
-        setSelectedModel(providerCatalog?.default_model ?? providerCatalog?.models[0]?.id ?? "");
+        setSelectedModel(initialModel);
         setCatalogErrorMessage("");
       } catch (error) {
         setCatalog(null);
@@ -194,15 +221,12 @@ function App() {
       await streamChat(
         {
           message: text,
+          session_id: sessionIdRef.current,
           llm: { provider: selectedProvider, model: selectedModel },
         },
         {
           onEvent: (event: ChatStreamEvent) => {
             if (event.type === "meta") {
-              updateAssistantMessage(assistantMessageId, (current) => ({
-                ...current,
-                requestId: event.request_id,
-              }));
               return;
             }
 
@@ -248,7 +272,6 @@ function App() {
                 text: event.message.text,
                 sources: event.message.sources,
                 chart: event.message.chart,
-                requestId: event.request_id,
                 status: "done",
                 transient: false,
               }));
@@ -280,7 +303,31 @@ function App() {
   function handleProviderChange(provider: LLMSelection["provider"]) {
     setSelectedProvider(provider);
     const providerCatalog = catalog?.providers.find((item) => item.provider === provider) ?? null;
-    setSelectedModel(providerCatalog?.default_model ?? providerCatalog?.models[0]?.id ?? "");
+    const nextModel =
+      provider === "openai" && providerCatalog?.models.some((model) => model.id === "gpt-5.4-mini")
+        ? "gpt-5.4-mini"
+        : providerCatalog?.default_model ?? providerCatalog?.models[0]?.id ?? "";
+    setSelectedModel(nextModel);
+  }
+
+  async function handleResetSession() {
+    if (sending) {
+      return;
+    }
+
+    setSubmitErrorMessage("");
+    try {
+      await resetChatSession(sessionIdRef.current);
+    } catch (error) {
+      setSubmitErrorMessage(error instanceof Error ? error.message : "重启会话失败。");
+      return;
+    }
+
+    const nextSessionId = createSessionId();
+    window.localStorage.setItem("finance-qa-session-id", nextSessionId);
+    sessionIdRef.current = nextSessionId;
+    setMessages([]);
+    setInput("");
   }
 
   return (
@@ -291,26 +338,10 @@ function App() {
             <h1>金融问答</h1>
           </div>
           <div className="header-controls">
-            <Select
-              value={selectedProvider}
-              loading={catalogLoading}
-              options={(catalog?.providers ?? []).map((provider) => ({
-                value: provider.provider,
-                label: provider.label,
-                disabled: !provider.enabled || provider.models.length === 0,
-              }))}
-              onChange={handleProviderChange}
-            />
-            <Select
-              value={selectedModel || undefined}
-              loading={catalogLoading}
-              placeholder="选择模型"
-              options={(activeProviderCatalog?.models ?? []).map((model) => ({
-                value: model.id,
-                label: model.id,
-              }))}
-              onChange={(value) => setSelectedModel(value)}
-            />
+            <div className="session-pill">当前 Session: {sessionIdRef.current}</div>
+            <Button onClick={() => void handleResetSession()} disabled={sending}>
+              重启会话
+            </Button>
           </div>
         </header>
 
@@ -353,6 +384,28 @@ function App() {
               }}
             />
             <div className="composer-actions">
+              <Select
+                value={selectedProvider}
+                loading={catalogLoading}
+                className="composer-select provider-select"
+                options={(catalog?.providers ?? []).map((provider) => ({
+                  value: provider.provider,
+                  label: provider.label,
+                  disabled: !provider.enabled || provider.models.length === 0,
+                }))}
+                onChange={handleProviderChange}
+              />
+              <Select
+                value={selectedModel || undefined}
+                loading={catalogLoading}
+                className="composer-select model-select"
+                placeholder="选择模型"
+                options={(activeProviderCatalog?.models ?? []).map((model) => ({
+                  value: model.id,
+                  label: model.id,
+                }))}
+                onChange={(value) => setSelectedModel(value)}
+              />
               <Spin spinning={sending} size="small" />
               <Button type="primary" onClick={() => void handleSend()} disabled={!input.trim() || !selectedModel} loading={sending}>
                 发送

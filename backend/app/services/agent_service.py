@@ -17,6 +17,7 @@ from app.services.answer_service import AnswerService
 from app.services.asset_qa_service import AssetQAService
 from app.services.chat_presenter_service import ChatPresenterService
 from app.services.knowledge_qa_service import KnowledgeQAService
+from app.services.session_memory_service import SessionMemoryService
 
 try:
     from langchain_core.messages import HumanMessage, SystemMessage
@@ -172,11 +173,13 @@ class AgentService:
         knowledge_qa_service: KnowledgeQAService,
         chat_presenter_service: ChatPresenterService,
         fallback_answer_service: AnswerService,
+        session_memory_service: SessionMemoryService,
     ) -> None:
         self.provider = provider
         self.model_name = model
         self.chat_presenter_service = chat_presenter_service
         self.fallback_answer_service = fallback_answer_service
+        self.session_memory_service = session_memory_service
         self.tool_executor = AgentToolExecutor(
             asset_qa_service=asset_qa_service,
             knowledge_qa_service=knowledge_qa_service,
@@ -193,8 +196,7 @@ class AgentService:
             return self.fallback_answer_service.answer(request)
 
         try:
-            state = self.graph.invoke({"request_message": request.message})
-            return self._build_run_result(request, state).answer
+            return self._run_request(request).answer
         except Exception as exc:
             trace_event("agent.fallback", {"reason": "agent_error", "type": exc.__class__.__name__, "message": str(exc)})
             return self.fallback_answer_service.answer(request)
@@ -204,8 +206,7 @@ class AgentService:
             return self.fallback_answer_service.answer_chat(request)
 
         try:
-            state = self.graph.invoke({"request_message": request.message})
-            return self._build_run_result(request, state).message
+            return self._run_request(request).message
         except Exception as exc:
             trace_event("agent.fallback", {"reason": "agent_error", "type": exc.__class__.__name__, "message": str(exc)})
             return self.fallback_answer_service.answer_chat(request)
@@ -219,7 +220,7 @@ class AgentService:
 
         try:
             yield AgentStreamEvent(type="status", payload={"text": "正在判断问题意图..."})
-            plan = self._plan_request(request.message)
+            plan = self._plan_request(request)
             yield AgentStreamEvent(
                 type="thought",
                 payload={
@@ -243,8 +244,15 @@ class AgentService:
                 yield AgentStreamEvent(type="final", payload=run_result.message.model_dump(mode="json"))
                 return
 
-            yield AgentStreamEvent(type="status", payload={"text": self._build_tool_status(plan)})
-            answer = self._run_tool(request, plan)
+            cached_answer = self.session_memory_service.get_cached_answer(request.session_id, plan)
+            if cached_answer is not None:
+                yield AgentStreamEvent(type="status", payload={"text": "正在复用上一轮已查询结果..."})
+                answer = cached_answer
+                trace_event("agent.tool_cache_hit", {"question_type": answer.question_type, "summary": answer.summary})
+            else:
+                yield AgentStreamEvent(type="status", payload={"text": self._build_tool_status(plan)})
+                answer = self._run_tool(request, plan)
+                self.session_memory_service.remember(request.session_id, plan, answer)
             yield AgentStreamEvent(
                 type="tool",
                 payload={
@@ -289,13 +297,19 @@ class AgentService:
         return workflow.compile()
 
     def _plan_node(self, state: AgentGraphState) -> AgentGraphState:
-        plan = self._plan_request(state["request_message"])
+        plan = self._plan_request(ChatRequest(message=state["request_message"]))
         return {"plan": plan.model_dump(mode="json")}
 
     def _tool_node(self, state: AgentGraphState) -> AgentGraphState:
         plan = AgentPlanningResult.model_validate(state["plan"])
         request = ChatRequest(message=state["request_message"])
-        answer = self._run_tool(request, plan)
+        cached_answer = self.session_memory_service.get_cached_answer(request.session_id, plan)
+        if cached_answer is not None:
+            trace_event("agent.tool_cache_hit", {"question_type": cached_answer.question_type, "summary": cached_answer.summary})
+            answer = cached_answer
+        else:
+            answer = self._run_tool(request, plan)
+            self.session_memory_service.remember(request.session_id, plan, answer)
         return {"answer_payload": answer.model_dump(mode="json")}
 
     def _respond_node(self, state: AgentGraphState) -> AgentGraphState:
@@ -353,8 +367,40 @@ class AgentService:
             return "".join(parts)
         return str(content or "")
 
-    def _plan_request(self, request_message: str) -> AgentPlanningResult:
-        system_prompt, user_prompt = build_agent_planning_prompt(request_message)
+    def _run_request(self, request: ChatRequest) -> AgentRunResult:
+        plan = self._plan_request(request)
+        if plan.tool_name == "direct_response":
+            return self._build_run_result(
+                request,
+                {
+                    "request_message": request.message,
+                    "plan": plan.model_dump(mode="json"),
+                    "final_text": (plan.direct_response or "当前无法可靠回答该问题。").strip(),
+                },
+            )
+
+        cached_answer = self.session_memory_service.get_cached_answer(request.session_id, plan)
+        if cached_answer is not None:
+            trace_event("agent.tool_cache_hit", {"question_type": cached_answer.question_type, "summary": cached_answer.summary})
+            answer = cached_answer
+        else:
+            answer = self._run_tool(request, plan)
+            self.session_memory_service.remember(request.session_id, plan, answer)
+
+        final_text = self._render_final_text(request.message, plan, answer)
+        return self._build_run_result(
+            request,
+            {
+                "request_message": request.message,
+                "plan": plan.model_dump(mode="json"),
+                "answer_payload": answer.model_dump(mode="json"),
+                "final_text": final_text,
+            },
+        )
+
+    def _plan_request(self, request: ChatRequest) -> AgentPlanningResult:
+        context = self.session_memory_service.describe_context(request.session_id)
+        system_prompt, user_prompt = build_agent_planning_prompt(request.message, context)
         structured_model = self.model.with_structured_output(AgentPlanningResult)
         plan = structured_model.invoke(
             [
@@ -362,12 +408,16 @@ class AgentService:
                 HumanMessage(content=user_prompt),
             ]
         )
-        plan = self._normalize_plan(request_message, plan)
+        plan = self._normalize_plan(request.message, plan)
+        plan = self.session_memory_service.fill_plan_from_memory(request.session_id, plan)
+        plan = self._inherit_time_range_from_memory(request, plan)
         trace_event("agent.plan", plan)
         return plan
 
     def _run_tool(self, request: ChatRequest, plan: AgentPlanningResult) -> AnswerPayload:
-        answer = self.tool_executor.run(request, plan)
+        related_answer = self.session_memory_service.get_related_answer(request.session_id, plan)
+        tool_request = self._build_tool_request(request, plan, related_answer)
+        answer = self.tool_executor.run(tool_request, plan)
         trace_event("agent.tool_result", {"question_type": answer.question_type, "summary": answer.summary})
         return answer
 
@@ -397,7 +447,7 @@ class AgentService:
         if plan.tool_name == "asset_trend":
             return "正在拉取历史行情并计算走势..."
         if plan.tool_name == "asset_event_analysis":
-            return "正在查询行情、检索新闻并归纳上涨原因..."
+            return "正在查询行情、检索新闻并归纳变化原因..."
         if plan.tool_name == "finance_knowledge":
             return "正在检索知识库并整理答案..."
         if plan.tool_name == "report_summary":
@@ -417,7 +467,76 @@ class AgentService:
             if not normalized.reason:
                 normalized.reason = "后端一致性校验：包含时间范围的股价问题改为趋势查询。"
 
+        asks_for_performance = any(token in message for token in ["怎么样", "如何", "表现"])
+        asks_for_latest_price = any(token in message for token in ["当前", "现在", "最新", "现价", "报价", "多少钱", "多少"])
+        if normalized.tool_name == "asset_price" and asks_for_performance and not asks_for_latest_price:
+            normalized.tool_name = "asset_trend"
+            if normalized.time_length is None:
+                normalized.time_length = 30
+                normalized.time_unit = "day"
+            if not normalized.reason:
+                normalized.reason = "后端一致性校验：口语化“股价怎么样”优先视为近期走势查询。"
+
         return normalized
+
+    def _build_tool_request(
+        self,
+        request: ChatRequest,
+        plan: AgentPlanningResult,
+        related_answer: AnswerPayload | None,
+    ) -> ChatRequest:
+        if related_answer is None:
+            return request
+
+        same_symbol = (
+            not plan.symbol
+            or (related_answer.route.extracted_symbol or "").strip().lower() == (plan.symbol or "").strip().lower()
+        )
+        same_company = (
+            not plan.company
+            or (related_answer.route.extracted_company or "").strip().lower() == (plan.company or "").strip().lower()
+        )
+        if not same_symbol and not same_company:
+            return request
+
+        tool_request = request.model_copy(deep=True)
+        tool_request.metadata["memory_context"] = {
+            "previous_answer": related_answer.model_dump(mode="json"),
+        }
+        trace_event(
+            "agent.memory_context",
+            {
+                "session_id": request.session_id,
+                "question_type": related_answer.question_type,
+                "summary": related_answer.summary,
+            },
+        )
+        return tool_request
+
+    def _inherit_time_range_from_memory(self, request: ChatRequest, plan: AgentPlanningResult) -> AgentPlanningResult:
+        if self._message_has_explicit_time_range(request.message):
+            return plan
+
+        related_answer = self.session_memory_service.get_related_answer(request.session_id, plan)
+        if related_answer is None:
+            return plan
+
+        time_range_days = related_answer.objective_data.get("time_range_days")
+        if not isinstance(time_range_days, int) or time_range_days <= 0:
+            return plan
+
+        normalized = plan.model_copy(deep=True)
+        normalized.time_length = time_range_days
+        normalized.time_unit = "day"
+        if not normalized.reason:
+            normalized.reason = "后端一致性校验：当前问题未显式给出时间范围，继承上一轮时间窗口。"
+        return normalized
+
+    def _message_has_explicit_time_range(self, message: str) -> bool:
+        lowered = message.lower()
+        if re.search(r"\d+\s*(day|week|month|year|天|周|星期|个月|月|年)", lowered):
+            return True
+        return any(token in lowered for token in ["最近一年", "最近一月", "最近一个月", "最近一周", "最近一天", "过去", "近年", "近月", "近周", "近天"])
 
     def _sanitize_final_text(self, text: str, answer: AnswerPayload) -> str:
         cleaned = text.strip()

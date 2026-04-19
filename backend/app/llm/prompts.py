@@ -108,7 +108,7 @@ def build_verification_prompt(answer_payload: AnswerPayload) -> tuple[str, str]:
     return system_prompt, user_prompt
 
 
-def build_agent_planning_prompt(message: str) -> tuple[str, str]:
+def build_agent_planning_prompt(message: str, conversation_context: str | None = None) -> tuple[str, str]:
     system_prompt = (
         "你是金融问答系统中的智能代理规划器。"
         "你必须先判断用户问题最适合调用哪个工具，再给出保守、可执行的参数。"
@@ -132,7 +132,8 @@ def build_agent_planning_prompt(message: str) -> tuple[str, str]:
         "10. 若 company 与 symbol 只确定一个，另一个字段可以留空。\n"
         "11. 涉及时间范围时，不要换算成天数；请填写 time_length 和 time_unit，例如最近三年 => time_length=3, time_unit=year。\n"
         "12. time_unit 只能是 day, week, month, year 之一；没有明确时间时可留空。\n"
-        f"用户问题：{message}\n"
+        + (f"会话上下文：\n{conversation_context}\n" if conversation_context else "")
+        + f"用户问题：{message}\n"
         "请严格输出 JSON，禁止附加说明。JSON Schema 如下：\n"
         f"{schema_json}"
     )

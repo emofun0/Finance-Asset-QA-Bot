@@ -6,6 +6,7 @@ import type {
   ChatStreamEvent,
   LLMModelCatalogResponse,
   LLMSelection,
+  SessionResetResponse,
   StandardResponse,
 } from "../types/api";
 
@@ -29,8 +30,16 @@ export async function fetchLLMModels(): Promise<LLMModelCatalogResponse> {
   return response.data;
 }
 
+export async function resetChatSession(sessionId: string): Promise<SessionResetResponse> {
+  const response = await api.post<SessionResetResponse>("/api/v1/chat/session/reset", {
+    session_id: sessionId,
+  });
+  return response.data;
+}
+
 interface StreamChatParams {
   message: string;
+  session_id?: string;
   llm: LLMSelection;
 }
 

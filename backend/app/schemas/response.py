@@ -74,3 +74,8 @@ class ChatMessagePayload(BaseModel):
 class ChatResponse(BaseModel):
     request_id: str
     message: ChatMessagePayload
+
+
+class SessionResetPayload(BaseModel):
+    session_id: str
+    cleared: bool = True

@@ -188,7 +188,9 @@ class AssetQAService:
             return self._build_event_date_confirmation_answer(request, route, symbol, snapshot.currency, time_range)
 
         profile = find_company_profile(route.extracted_company, symbol)
-        event_window = self._build_event_window(symbol, route.event_date, time_range)
+        event_window = self._load_reused_event_window(request, symbol, time_range, route.event_date)
+        if event_window is None:
+            event_window = self._build_event_window(symbol, route.event_date, time_range)
         if not self._event_has_significant_move(event_window):
             return self._build_no_significant_move_answer(request, route, symbol, snapshot.currency, time_range, event_window)
 
@@ -279,6 +281,59 @@ class AssetQAService:
             ],
             route=route,
         )
+
+    def _load_reused_event_window(
+        self,
+        request: ChatRequest,
+        symbol: str,
+        time_range: int,
+        event_date: str | None,
+    ) -> dict | None:
+        if event_date:
+            return None
+
+        memory_context = request.metadata.get("memory_context")
+        if not isinstance(memory_context, dict):
+            return None
+        previous_answer = memory_context.get("previous_answer")
+        if not isinstance(previous_answer, dict):
+            return None
+        if previous_answer.get("question_type") != IntentType.ASSET_TREND.value:
+            return None
+
+        objective_data = previous_answer.get("objective_data")
+        if not isinstance(objective_data, dict):
+            return None
+        if str(objective_data.get("symbol") or "").strip().upper() != symbol.strip().upper():
+            return None
+        if objective_data.get("time_range_days") != time_range:
+            return None
+
+        points = objective_data.get("points")
+        if not isinstance(points, list) or len(points) < 2:
+            return None
+
+        event_window = {
+            "analysis_mode": "recent_window",
+            "event_date": None,
+            "time_range_days": time_range,
+            "reference_price": objective_data.get("start_price"),
+            "event_close": objective_data.get("end_price"),
+            "event_change_pct": objective_data.get("change_pct"),
+            "points": points,
+        }
+        if not all(isinstance(event_window[key], (int, float)) for key in ["reference_price", "event_close", "event_change_pct"]):
+            return None
+
+        trace_event(
+            "asset.event_window_reused",
+            {
+                "symbol": symbol,
+                "time_range_days": time_range,
+                "summary": previous_answer.get("summary"),
+            },
+        )
+        return event_window
 
     def _build_event_window(self, symbol: str, event_date: str | None, time_range: int) -> dict:
         if event_date:
