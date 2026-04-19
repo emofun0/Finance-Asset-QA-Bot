@@ -29,21 +29,6 @@ def build_router_prompt(message: str, heuristic_route: RouteDecision) -> tuple[s
     return system_prompt, user_prompt
 
 
-def build_query_rewrite_prompt(message: str, route: RouteDecision) -> tuple[str, str]:
-    system_prompt = (
-        "你是金融问答系统中的查询改写器。"
-        "你的任务是把用户问题改写为更适合检索的查询，并补齐公司英文名、股票代码、报告类型和关键财务指标。"
-        "你必须保留原问题意图，不得凭空添加事实。"
-    )
-    user_prompt = (
-        "请根据以下输入返回结构化 JSON。\n"
-        "字段要求：rewritten_query, search_keywords, notes。\n"
-        f"原始问题：{message}\n"
-        f"路由结果：{json.dumps(route.model_dump(mode='json'), ensure_ascii=False)}\n"
-    )
-    return system_prompt, user_prompt
-
-
 def build_answer_generation_prompt(
     request_message: str,
     route: RouteDecision,
@@ -52,6 +37,8 @@ def build_answer_generation_prompt(
     system_prompt = (
         "你是金融资产问答系统中的回答生成器。"
         "你只能基于给定的客观数据、检索证据和系统草稿做归纳，不得编造数字、来源或公司事实。"
+        "如果草稿里包含 report_context、metric_lines、table_rows 等财报上下文，你必须优先依据这些原始数字片段归纳。"
+        "如果同一份财报同时包含年度和季度数字，你必须明确区分口径，不能把不同期间的数字混写成一条结论。"
         "你的输出必须是结构化 JSON，且 summary、analysis、limitations 都要信息充分、严格受证据约束。"
     )
     user_prompt = (
@@ -61,7 +48,9 @@ def build_answer_generation_prompt(
         "2. 如果 objective_data.source_mode=not_found，或者知识/财报类回答没有 sources，你必须保留“依据不足、无法可靠回答”的结论，不得用常识补答。\n"
         "3. summary 要直接回答问题，并尽量保留草稿中的关键事实、数字和时间信息。\n"
         "4. analysis 每条都必须基于已给证据，优先保留关键经营指标、同比变化和业务线亮点。\n"
-        "5. limitations 只保留真正有必要的边界说明，不要写空泛套话。\n"
+        "5. 如果草稿里有 objective_data.report_context，请优先阅读其中的 metric_lines 和 table_rows，再生成摘要。\n"
+        "6. 对财报问题，若证据里同时有全年和单季数据，必须显式说明哪个是全年、哪个是单季。\n"
+        "7. limitations 只保留真正有必要的边界说明，不要写空泛套话。\n"
         f"用户问题：{request_message}\n"
         f"路由：{json.dumps(route.model_dump(mode='json'), ensure_ascii=False)}\n"
         f"草稿回答：{json.dumps(draft_answer.model_dump(mode='json'), ensure_ascii=False, indent=2)}\n"
@@ -77,6 +66,7 @@ def build_chat_response_prompt(
     system_prompt = (
         "你是金融资产问答助手。"
         "你只能基于给定草稿中的事实、来源边界和限制来回答，不得编造数字、时间、结论或额外来源。"
+        "如果草稿里带有财报的整份数字上下文，你应优先基于这些数字组织摘要，并明确区分年度与季度口径。"
         "你要直接输出给用户看的最终正文，不要输出 JSON，不要输出标题，不要解释你的思考过程。"
         "如果证据不足，必须明确说依据不足，不能用常识补充。"
     )
@@ -116,7 +106,9 @@ def build_agent_planning_prompt(message: str, conversation_context: str | None =
         "你是金融问答系统中的智能代理规划器。"
         "你必须先判断用户问题最适合调用哪个工具，再给出保守、可执行的参数。"
         "不要编造不存在的公司、股票代码、日期或财报。"
-        "优先依赖你的金融常识把中文公司名、英文公司名与股票代码补齐到检索查询中。"
+        "如果用户只写中文公司名、简称、口语表达或模糊表述，你要把 rewritten_query 补成正式可检索表达，包括中文原词、官方英文公司名、主股票代码、报告类型、时间范围和关键指标。"
+        "rewritten_query 默认应同时保留中文和英文检索词，不要只写英文。中文术语、中文公司名、中文报告类型要尽量保留。"
+        "不要依赖任何别名映射表，不要输出 alias，不要把中文别名原样当成唯一检索键。"
         "如果问题信息不足、超出系统范围，使用 direct_response。"
     )
     schema_json = json.dumps(AgentPlanningResult.model_json_schema(), ensure_ascii=False)
@@ -127,7 +119,8 @@ def build_agent_planning_prompt(message: str, conversation_context: str | None =
         "1. 价格/走势/事件归因属于市场数据工具。\n"
         "2. 概念解释、公司披露、财报摘要优先使用本地 RAG：finance_knowledge / report_summary。\n"
         "3. 只有在用户明确表示本地检索不对、要联网搜、要官网/新闻来源，或会话上下文显示上一轮 RAG 证据不足时，才使用 web_finance_knowledge / web_report_summary。\n"
-        "4. rewritten_query 要写成真正可检索的查询，优先补上英文公司名、股票代码、报告类型、常见英文术语。\n"
+        "4. rewritten_query 必须写成真正可检索的查询，默认同时包含中文和英文检索词；优先补上中文原词、官方英文公司名、主股票代码、报告类型、常见英文术语、关键财务指标。\n"
+        "4.1 如果用户问题本身是中文，rewritten_query 里不能把中文全部丢掉；至少要保留关键中文术语、中文公司名或中文报告类型。\n"
         "5. thought 要简短准确，不要输出长链路推理。\n"
         "6. 日期用 ISO 格式，如 2026-01-15；不确定时留空。\n"
         "7. 涉及时间范围时，不要换算成天数；请填写 time_length 和 time_unit，例如最近三年 => time_length=3, time_unit=year。\n"
@@ -136,13 +129,17 @@ def build_agent_planning_prompt(message: str, conversation_context: str | None =
         "用户：阿里巴巴最近半年股价怎么样\n"
         "输出：{\"tool_name\":\"asset_trend\",\"thought\":\"查询 Alibaba 过去半年的股价趋势。\",\"company\":\"Alibaba\",\"symbol\":\"BABA\",\"time_length\":6,\"time_unit\":\"month\",\"event_date\":null,\"rewritten_query\":null,\"direct_response\":null,\"reason\":\"用户在问特定资产的区间走势。\"}\n"
         "用户：什么是纳斯达克\n"
-        "输出：{\"tool_name\":\"finance_knowledge\",\"thought\":\"先用本地知识库检索纳斯达克定义。\",\"company\":null,\"symbol\":null,\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"Nasdaq Composite index definition stock exchange meaning\",\"direct_response\":null,\"reason\":\"概念解释问题先走 RAG。\"}\n"
+        "输出：{\"tool_name\":\"finance_knowledge\",\"thought\":\"先用本地知识库检索纳斯达克定义。\",\"company\":null,\"symbol\":null,\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"纳斯达克 Nasdaq Composite index definition stock exchange meaning 定义\",\"direct_response\":null,\"reason\":\"概念解释问题先走 RAG。\"}\n"
         "用户：上一个解释不对，去网上搜纳斯达克官方定义\n"
-        "输出：{\"tool_name\":\"web_finance_knowledge\",\"thought\":\"改用网页检索查找更可靠的官方定义。\",\"company\":null,\"symbol\":null,\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"Nasdaq official definition stock exchange index glossary\",\"direct_response\":null,\"reason\":\"用户明确要求联网检索并对上一轮本地结果不满意。\"}\n"
+        "输出：{\"tool_name\":\"web_finance_knowledge\",\"thought\":\"改用网页检索查找更可靠的官方定义。\",\"company\":null,\"symbol\":null,\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"纳斯达克 Nasdaq official definition stock exchange index glossary 官方定义\",\"direct_response\":null,\"reason\":\"用户明确要求联网检索并对上一轮本地结果不满意。\"}\n"
         "用户：总结一下腾讯最新季度财报\n"
-        "输出：{\"tool_name\":\"report_summary\",\"thought\":\"先检索 Tencent 最近季度财报材料并提炼摘要。\",\"company\":\"Tencent\",\"symbol\":\"0700.HK\",\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"Tencent 0700.HK latest quarterly results earnings release quarterly presentation\",\"direct_response\":null,\"reason\":\"财报摘要优先本地披露材料。\"}\n"
+        "输出：{\"tool_name\":\"report_summary\",\"thought\":\"先检索 Tencent 最近季度财报材料并提炼摘要。\",\"company\":\"Tencent\",\"symbol\":\"0700.HK\",\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"腾讯 Tencent 0700.HK 最新季度财报 latest quarterly results earnings release quarterly presentation\",\"direct_response\":null,\"reason\":\"财报摘要优先本地披露材料。\"}\n"
+        "用户：阿里这季营收和经调整 EBITA 怎么样\n"
+        "输出：{\"tool_name\":\"report_summary\",\"thought\":\"先检索 Alibaba 最近季度财报中的营收和经调整 EBITA。\",\"company\":\"Alibaba\",\"symbol\":\"BABA\",\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"阿里巴巴 Alibaba BABA 这季营收 经调整 EBITA 最新季度财报 latest quarterly results revenue adjusted EBITA customer management cloud intelligence\",\"direct_response\":null,\"reason\":\"用户在问公司季度财报中的具体指标。\"}\n"
+        "用户：腾讯年报里游戏和广告的收入表格给我看一下\n"
+        "输出：{\"tool_name\":\"report_summary\",\"thought\":\"先检索 Tencent 年报中的分部收入表格。\",\"company\":\"Tencent\",\"symbol\":\"0700.HK\",\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"腾讯 Tencent 0700.HK 年报 游戏 广告 收入表格 annual report segment revenue table gaming advertising online advertising\",\"direct_response\":null,\"reason\":\"用户需要财报中的表格和具体数字。\"}\n"
         "用户：本地财报搜得不对，去官网找腾讯最新财报\n"
-        "输出：{\"tool_name\":\"web_report_summary\",\"thought\":\"改用官网网页检索寻找最新财报材料。\",\"company\":\"Tencent\",\"symbol\":\"0700.HK\",\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"Tencent 0700.HK latest quarterly results investor relations official\",\"direct_response\":null,\"reason\":\"用户明确要求网页/官网 fallback。\"}\n"
+        "输出：{\"tool_name\":\"web_report_summary\",\"thought\":\"改用官网网页检索寻找最新财报材料。\",\"company\":\"Tencent\",\"symbol\":\"0700.HK\",\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"腾讯 Tencent 0700.HK 最新财报 latest quarterly results investor relations official 官网\",\"direct_response\":null,\"reason\":\"用户明确要求网页/官网 fallback。\"}\n"
         + (f"会话上下文：\n{conversation_context}\n" if conversation_context else "")
         + f"用户问题：{message}\n"
         "请严格输出 JSON，禁止附加说明。JSON Schema 如下：\n"

@@ -12,7 +12,7 @@
 - 前端：React 19 + TypeScript + Vite + Ant Design，提供聊天界面、模型选择、会话重置、趋势图展示。
 - 后端：FastAPI，提供聊天、资产行情、知识库重建、模型列表、trace 查询接口。
 - 资产链路：`MarketDataTool` 通过 `yfinance` 获取价格与历史行情，事件归因通过 `ddgs` 检索新闻和官网网页。
-- 知识链路：本地知识库使用 `scikit-learn` 的 `TfidfVectorizer` 和稀疏矩阵做检索，财报摘要支持网页回退。
+- 知识链路：本地知识库使用 `ChromaDB + dense embedding` 检索；财报、术语库和普通文本采用不同的结构化入库方式，检索不足时支持网页回退。
 - LLM：同时支持 OpenAI 与 Ollama。常规问答链路使用自定义 `BaseLLMClient` 抽象；Agent 链路额外使用 LangChain/LangGraph。
 - 流式输出：后端 `/api/v1/chat/stream` 返回 SSE，前端使用 `fetch + ReadableStream` 手动消费。
 - 观测性：每次聊天请求都会写 trace，可通过 `/api/v1/traces` 查看。
@@ -51,7 +51,7 @@
 - 市场数据：`yfinance`
 - 网页检索：`ddgs`
 - 文档处理：BeautifulSoup、PyPDF、`pdftotext`
-- 本地检索：`scikit-learn`、`scipy.sparse`、`joblib`
+- 本地检索：`chromadb`、`sentence-transformers`
 - LLM 集成：OpenAI、Ollama、LangChain、LangGraph
 
 ## 快速启动
@@ -88,7 +88,6 @@ TRACE_LOG_DIR=backend/logs/traces
 LLM_PROVIDER=ollama
 LLM_ENABLE_ROUTING=true
 LLM_ENABLE_GENERATION=true
-LLM_ENABLE_QUERY_REWRITE=true
 LLM_ENABLE_VERIFICATION=true
 LLM_TIMEOUT_SECONDS=120
 
@@ -99,6 +98,12 @@ OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.1
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_REASONING_EFFORT=medium
+
+RAG_VECTOR_DB_DIR=backend/data/knowledge/chroma
+RAG_COLLECTION_NAME=finance_knowledge
+RAG_EMBEDDING_PROVIDER=sentence_transformers
+RAG_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+RAG_EMBEDDING_BATCH_SIZE=32
 ```
 
 前端：
@@ -139,7 +144,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/rag/ingest
 两者区别：
 
 - `build_knowledge_base.py`：读取 `source_manifest.json`，下载或读取原始资料，抽取文本，生成 `processed/`，再构建 `index/`。
-- `/api/v1/rag/ingest`：只对现有 `processed/*.json` 重新分块、向量化、落盘索引，不负责下载原始资料。
+- `/api/v1/rag/ingest`：只对现有 `processed/*.json` 重新做结构化切块、dense embedding 和 Chroma 落盘，不负责下载原始资料。
 
 ### 5. 运行测试
 
@@ -179,9 +184,9 @@ pytest
 题目要求的“基于 RAG 的金融知识问答”已经实现：
 
 - 小型知识库：数据放在 `backend/data/knowledge`。
-- 文档分块：`chunk_text()` 在 `KnowledgeBaseBuilder` 中被调用。
-- 向量化：`LocalVectorStore.build()` 使用 `TfidfVectorizer`。
-- 向量检索：`KnowledgeRetriever.search()` 与 `search_report_documents()` 使用本地稀疏矩阵检索。
+- 文档分块：`KnowledgeBaseBuilder` 会按文档类型分别做结构化切块。
+- 向量化：`SentenceTransformerEmbeddingFunction` / 其他 embedding provider 生成 dense embedding。
+- 向量检索：`ChromaVectorStore` 持久化存储，`KnowledgeRetriever.search()` 与 `search_report_documents()` 负责召回和重排。
 - Web Search 补充：当本地知识或财报材料覆盖不足时，`KnowledgeQAService` 会回退到 `OfficialWebSearchTool`。
 - 不完全依赖自由生成：知识和财报回答先检索，再做受限整理；证据不足时会返回“无法可靠回答”。
 
@@ -223,7 +228,8 @@ pytest
 - FastAPI：路由、类型校验、错误处理和流式响应都实现得直接清晰，适合这个项目的 API 组织方式。
 - `yfinance`：用于价格快照、区间历史、事件窗口行情，满足资产问答必须依赖市场数据的要求。
 - `ddgs`：用于新闻检索、官方站点检索和财报网页 fallback。
-- `scikit-learn`：本地 RAG 不依赖外部向量库，直接用 TF-IDF + 稀疏矩阵，部署简单。
+- `chromadb`：持久化存储 dense 向量与 metadata，支持过滤检索。
+- `sentence-transformers`：默认本地 dense embedding 实现，可替换为 OpenAI 或 Ollama embedding。
 - OpenAI / Ollama 双实现：支持本地模型和云模型切换。
 - LangChain / LangGraph：只在 Agent 规划链路里用，不是整个后端的统一抽象层。
 
@@ -232,10 +238,10 @@ pytest
 提示词集中在 [backend/app/llm/prompts.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/app/llm/prompts.py:1)，总体原则是“结构化约束优先，生成只在证据边界内进行”。
 
 - 路由提示词：把问题分类为价格、趋势、事件归因、金融知识、财报摘要或 unknown，要求保守，不编造公司、代码、日期。
-- Agent 规划提示词：让模型先选工具，再产出结构化参数；如果信息不足则输出 `direct_response`。
+- Agent 规划提示词：让模型先选工具，再产出结构化参数；同时统一生成 `rewritten_query`，补全正式英文公司名、股票代码、报告类型和关键指标；如果信息不足则输出 `direct_response`。
 - 回答生成提示词：只允许基于草稿中的 `objective_data`、`sources` 和已检索证据润色。
 - 聊天回答提示词：把工具结果整理成面向用户的正文，不输出 JSON。
-- 校验提示词：在知识/财报场景下检查越界推断和证据不足。
+- 校验提示词：在知识/财报场景下检查越界推断和证据不足；财报场景要求区分年度与季度口径，不能混写不同 period 的数字。
 - 事件归因提示词：只允许根据标题、来源和摘录生成中文归因观察。
 
 ### 4. 数据来源说明
@@ -243,7 +249,7 @@ pytest
 当前代码实际使用的数据来源如下：
 
 - 市场行情：Yahoo Finance，经 `yfinance` 调用。
-- 本地知识库原始资料：`backend/data/knowledge/source_manifest.json` 中登记的 PDF、HTML 和内联文本。
+- 本地知识库原始资料：`backend/data/knowledge/source_manifest.json` 中登记的 PDF、HTML 和内联文本。目前本地知识库的缺乏是影响rag效果的主要因素，由于我对金融知识库了解不多，仅用爬虫抓取了一些文件和财报，需要后续补充。
 - 网页检索：DuckDuckGo Search，经 `ddgs` 调用。
 - 事件/财报网页过滤：结合公司官网域名白名单和新闻站点白名单。
 
@@ -252,71 +258,59 @@ pytest
 1. `source_manifest.json` 描述文档元数据。
 2. `backend/scripts/build_knowledge_base.py` 下载或读取原始资料。
 3. HTML/PDF 转文本后写入 `raw/` 与 `processed/`。
-4. `KnowledgeBaseBuilder` 进行分块、构造 `chunks.jsonl`、训练 TF-IDF、保存 `matrix.npz` 和 `vectorizer.joblib`。
-5. `KnowledgeRetriever` 在运行时加载索引并执行检索与 rerank。
+4. `KnowledgeBaseBuilder` 进行结构化切块、写入 `chunks.jsonl`、生成 dense embedding，并写入 `ChromaDB`。
+5. `KnowledgeRetriever` 在运行时执行向量检索、metadata 过滤与重排。
 
 RAG 细节：
 
-- 当前没有接入独立的 dense embedding 模型。使用 `scikit-learn` 的 `TfidfVectorizer` 生成的稀疏特征向量。
-- 向量器配置是 `analyzer="char_wb"`、`ngram_range=(2, 4)`、`sublinear_tf=True`。
-- `char_wb` 的作用是按词边界内的字符 n-gram 建模，当前配置更偏向中英文混合检索、小知识库和错拼容忍，而不是语义级 dense retrieval。
-- 构建索引时并不是只编码正文，还会把 `title`、`doc_type`、`source_name`、`company`、`symbol` 拼到 chunk 前面一起进入向量化，这样标题和公司标识也会影响召回。
+- 当前默认使用 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 生成 dense embedding，也可以通过配置切换到 OpenAI 或 Ollama embedding。
+- 向量库存储在 `backend/data/knowledge/chroma/`，collection 名默认是 `finance_knowledge`。
+- 检索时会同时利用向量相似度和 metadata 过滤，例如 `company`、`symbol`、`doc_type`、`language`、`chunk_kind`。
 - 索引落盘文件包括：
   - `backend/data/knowledge/index/chunks.jsonl`
-  - `backend/data/knowledge/index/vectorizer.joblib`
-  - `backend/data/knowledge/index/matrix.npz`
-- 其中 `chunks.jsonl` 存 chunk 文本和元数据，`vectorizer.joblib` 存 TF-IDF 向量器，`matrix.npz` 存全部 chunk 的稀疏矩阵。
+  - `backend/data/knowledge/index/manifest.json`
+  - `backend/data/knowledge/chroma/`
+- 其中 `chunks.jsonl` 存 chunk 文本和元数据，`manifest.json` 存构建统计与 embedding 配置，`chroma/` 存持久化向量库。
 
 切块策略：
 
-- 基础切块函数是 `chunk_text(text, chunk_size=900, overlap=120)`。
-- 先去掉空行，并对每一行做 `strip()`，再按段落切分。
-- 优先按段落聚合，只有拼接后超过 `900` 字符才截断，因此普通段落内容会尽量保持原始边界。
-- 如果单个段落本身超过 `900` 字符，则退化为滑动窗口切块，窗口大小 `900`、重叠 `120`，降低硬切断带来的信息损失。
-- 构建阶段会过滤过短片段：长度小于 `120` 的 chunk 不进入索引。
-- 构建阶段还会按文档类型限制最大 chunk 数，避免超长年报占满索引，例如：
-  - `annual_report` 最多 180 段
-  - `interim_report` 最多 120 段
-  - `quarterly_financial_statements` 最多 90 段
-  - `quarterly_results` / `earnings_release` 最多 60 段
-  - `knowledge_article` 最多 24 段
-  - `glossary` 最多 20 段
+- 财报文档：
+  - 会优先抽成 `report_profile`、`report_metric`、`report_table` 三类 chunk。
+  - `report_metric` 只保留带关键财务词和数字的高信号行。
+  - `report_table` 会尽量保留表格型行，便于后续把数字上下文整体交给大模型。
+- 术语库：
+  - 优先抽取 `term -> definition` 结构，入库为 `glossary_term`。
+  - 无法稳定抽取时才退化为较短的 `glossary_text`。
+- 普通知识文本：
+  - 使用更短的文本 chunk，默认 `320` 字符，overlap 更小。
+  - 目标是提升概念定义和教材类内容的召回精度。
 
 运行时检索：
 
-- 一般知识问答走 `KnowledgeRetriever.search()`，直接对 chunk 级索引做召回。
-- 查询向量通过 `vectorizer.transform([query])` 生成，chunk 初始分数通过 `matrix @ query_vector.T` 计算。
-- 查询得分基于稀疏矩阵相乘，再叠加公司、股票代码、语言、文档类型和关键词匹配 boost。
-- 额外 boost 包括：
-  - 公司精确匹配 `+0.15`
-  - 股票代码精确匹配 `+0.2`
-  - 中文问题命中中文文档 `+0.08`
-  - 文档类型优先级加分
-  - 标题或正文命中金融关键词的加分
-- 这意味着当前检索是“TF-IDF 召回 + 规则重排”，不是纯向量数据库式黑盒检索。
+- 一般知识问答走 `KnowledgeRetriever.search()`，以 dense 向量为主，叠加少量规则重排。
+- 财报问答走 `KnowledgeRetriever.search_report_documents()`，优先召回 `report_metric / report_table / report_profile`。
+- 财报命中后，`KnowledgeQAService` 还会按 `doc_id` 回收整份报告的主要数值块和表格块，组装为 `objective_data.report_context`，交给后续 LLM 归纳。
+- 这样做的目标不是只让模型看 top-k 碎片，而是让它在一份报告的完整数字上下文内做摘要，并明确区分全年和单季口径。
 
 财报摘要专用检索：
 
-- 财报摘要不完全复用普通 chunk 检索，而是走 `KnowledgeRetriever.search_report_documents()`。
-- 这条链路会先对整篇 processed document 打分，再从文档里抽取高信号 snippet。
-- 重点抽取的指标包括：收入、经营利润、净利润、现金流、每股收益、业务分部数据。
-- snippet 打分会偏好：
-  - 带数字的句子
-  - 含同比 / YoY / 百分比的句子
-  - 含 revenue、net income、cash flow、EPS 等财务词的句子
-  - 更靠前的高信号片段
-- 同时会过滤乱码、导航页、目录页、页眉页脚等低信号噪声内容。
+- 流程：
+  - 先召回最相关的财报结构化 chunk。
+  - 再按命中的主文档 `doc_id` 把同一份报告中的主要数字和表格整体取回。
+  - 把这些内容写入 `objective_data.report_context`。
+  - 之后由回答生成提示词要求模型只基于这份报告里的数字和表格归纳，并区分年度与季度数据。
+- 本地财报证据不足时，`KnowledgeQAService` 会自动回退到 `OfficialWebSearchTool.search_company_reports()`。
 
 ### 5. 优化与扩展思考
 
-以下是基于现有代码结构能直接落地的扩展方向，不代表已实现：
+以下是基于现有代码结构能直接落地的扩展方向：
 
 - 市场数据多源化：加入 Alpha Vantage、Polygon 等，并对价格结果做交叉校验。
 - 本地金融数据库：当前检索了一些公司财报和属于网站，知识库较小，不能有效覆盖大部分金融术语，依赖外部检索回退。
-- 检索升级：当前 TF-IDF 适合小型知识库，后续可增加 dense retrieval 或单独 reranker。
-- 财报摘要增强：现在摘要主要基于局部片段与规则抽取，可增加表格解析和章节级召回，实现专门的财宝解析模块
+- 检索升级：可以增加 reranker 或 cross-encoder 做二次精排。
+- 财报摘要增强：当前已经支持结构化数字块和表格块回收，后续还可以进一步做更严格的“年度/季度分栏摘要”和表格列语义解析。
 - 事件归因增强：目前只基于新闻标题/摘要和少量网页文本，可扩展为公告正文抓取与时间线对齐。
-- Query Rewrite 真正接线：已有 `QueryRewriteService` 文件，但主流程未接入，可作为下一步结构优化点。
+- Query Rewrite 增强：当前已统一由 Agent 规划阶段生成 `rewritten_query`，后续可继续加入更严格的时间归一化和指标模板。
 - 前端体验增强：当前只有单页聊天和趋势图，可增加 trace 可视化、工具步骤面板、对话历史持久化。
 
 ## 关键实现细节
@@ -339,7 +333,7 @@ RAG 细节：
 
 - 资产问答：直接返回工具结果，不走自由生成。
 - 金融知识问答：`AnswerService` 下会进入 `KnowledgeQAService`，但 `AnswerGenerationService` 对 `finance_knowledge` 默认跳过生成，保持检索式回答。
-- 财报摘要：如果检索到足够证据，可以进入回答生成和校验。
+- 财报摘要：如果检索到足够证据，会把 `report_context` 一并传给生成与校验阶段。
 - 证据不足时，`VerificationService` 会强制改写为保守结论。
 
 ## 已实现的前端交互
@@ -359,4 +353,3 @@ RAG 细节：
 - 事件归因只给高概率解释，不给确定性因果结论。
 - 财报摘要和知识问答受限于本地资料与网页检索覆盖度，资料不足时会拒答。
 - `/api/v1/rag/ingest` 不能替代离线全量抓取脚本，它只重建索引。
-- 当前 `QueryRewriteService` 未实际接入主要问答链路。

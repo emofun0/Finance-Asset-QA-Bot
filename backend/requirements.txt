@@ -7,10 +7,7 @@ httpx
 yfinance
 beautifulsoup4
 pypdf
-scikit-learn
+chromadb
+sentence-transformers
 ddgs
 openai
-langchain
-langgraph
-langchain-openai
-langchain-ollama

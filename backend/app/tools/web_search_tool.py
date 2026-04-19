@@ -79,6 +79,43 @@ class OfficialWebSearchTool:
         )
         return results
 
+    def search_company_reports_by_query(
+        self,
+        query: str,
+        *,
+        company: str | None = None,
+        symbol: str | None = None,
+        top_k: int = 4,
+    ) -> list[RetrievalResult]:
+        base_query = " ".join(
+            part
+            for part in [
+                company,
+                symbol,
+                query,
+                "earnings release quarterly results annual report investor relations",
+            ]
+            if part
+        ).strip()
+        results = self._search_text(
+            queries=[base_query],
+            top_k=top_k,
+            company=company,
+            symbol=symbol,
+            doc_type_hint="web_search",
+            search_profile="company_reports",
+        )
+        trace_event(
+            "web_search.company_reports_generic",
+            {
+                "query": base_query,
+                "company": company,
+                "symbol": symbol,
+                "results": self._summarize_results(results),
+            },
+        )
+        return results
+
     def search_company_events(
         self,
         query: str,

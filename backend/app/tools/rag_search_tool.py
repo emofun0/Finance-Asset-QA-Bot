@@ -15,6 +15,7 @@ class RagSearchRequest:
     language: str | None = None
     doc_type: str | None = None
     doc_types: list[str] | None = None
+    chunk_kinds: list[str] | None = None
 
 
 class RagSearchTool:
@@ -32,6 +33,7 @@ class RagSearchTool:
                 "language": request.language,
                 "doc_type": request.doc_type,
                 "doc_types": request.doc_types,
+                "chunk_kinds": request.chunk_kinds,
             },
         )
         return self.retriever.search(
@@ -42,6 +44,7 @@ class RagSearchTool:
             doc_type=request.doc_type,
             doc_types=request.doc_types,
             language=request.language,
+            chunk_kinds=request.chunk_kinds,
         )
 
     def search_report_documents(self, request: RagSearchRequest) -> list[RetrievalResult]:

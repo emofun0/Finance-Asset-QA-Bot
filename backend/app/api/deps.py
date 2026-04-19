@@ -11,7 +11,6 @@ from app.services.asset_qa_service import AssetQAService
 from app.services.chat_presenter_service import ChatPresenterService
 from app.services.knowledge_qa_service import KnowledgeQAService
 from app.services.llm_catalog_service import LLMCatalogService
-from app.services.query_rewrite_service import QueryRewriteService
 from app.services.router_service import RouterService
 from app.services.session_memory_service import SessionMemoryService
 from app.services.verification_service import VerificationService
@@ -43,7 +42,6 @@ def get_knowledge_qa_service(provider: str | None = None, model: str | None = No
     return KnowledgeQAService(
         rag_search_tool=get_rag_search_tool(),
         web_search_tool=get_web_search_tool(),
-        query_rewrite_service=get_query_rewrite_service(provider=provider, model=model),
     )
 
 
@@ -72,13 +70,12 @@ def get_agent_service(provider: str | None = None, model: str | None = None) -> 
         chat_presenter_service=chat_presenter_service,
     )
     return AgentService(
-        provider=provider,
-        model=model,
         asset_qa_service=asset_qa_service,
         knowledge_qa_service=knowledge_qa_service,
         chat_presenter_service=chat_presenter_service,
         fallback_answer_service=fallback_answer_service,
         session_memory_service=get_session_memory_service(),
+        llm_client=get_llm_client(provider=provider, model=model),
     )
 
 
@@ -112,10 +109,6 @@ def get_answer_generation_service(provider: str | None = None, model: str | None
 
 def get_verification_service(provider: str | None = None, model: str | None = None) -> VerificationService:
     return VerificationService(llm_client=get_llm_client(provider=provider, model=model))
-
-
-def get_query_rewrite_service(provider: str | None = None, model: str | None = None) -> QueryRewriteService:
-    return QueryRewriteService(llm_client=get_llm_client(provider=provider, model=model))
 
 
 def get_llm_catalog_service() -> LLMCatalogService:

@@ -18,7 +18,6 @@ _COMPANY_CATALOG = (
         symbol="0700.HK",
         country_group="china",
         official_domains=("tencent.com", "static.www.tencent.com"),
-        aliases=("腾讯", "腾讯控股", "Tencent Holdings", "Tencent Holdings Limited"),
     ),
     CompanyProfile(
         canonical_name="ICBC",
@@ -43,16 +42,6 @@ _COMPANY_CATALOG = (
         symbol="BABA",
         country_group="china",
         official_domains=("alibabagroup.com",),
-        aliases=(
-            "阿里",
-            "阿里巴巴",
-            "阿里巴巴集团",
-            "Alibaba Group",
-            "Alibaba Group Holding",
-            "Alibaba Group Holding Limited",
-            "9988.HK",
-            "89988.HK",
-        ),
     ),
     CompanyProfile(
         canonical_name="PetroChina",
@@ -176,10 +165,5 @@ def find_company_profile(company: str | None = None, symbol: str | None = None) 
         if normalized_company and profile.canonical_name.lower() == normalized_company:
             return profile
         if normalized_symbol and profile.symbol.lower() == normalized_symbol:
-            return profile
-        normalized_aliases = {alias.strip().lower() for alias in profile.aliases}
-        if normalized_company and normalized_company in normalized_aliases:
-            return profile
-        if normalized_symbol and normalized_symbol in normalized_aliases:
             return profile
     return None

@@ -1,6 +1,21 @@
 {
   "document_count": 28,
-  "chunk_count": 1353,
+  "chunk_count": 684,
+  "chunk_kind_counts": {
+    "report_profile": 20,
+    "report_metric": 186,
+    "report_table": 82,
+    "report_text": 44,
+    "glossary_term": 160,
+    "text_chunk": 192
+  },
+  "embedding": {
+    "provider": "sentence_transformers",
+    "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "batch_size": 32
+  },
+  "vector_db_dir": "/home/ypw/Codes/Finance_Asset_QA_System/backend/data/knowledge/chroma",
+  "collection_name": "finance_knowledge",
   "documents": [
     {
       "doc_id": "alibaba_2025_annual_report",

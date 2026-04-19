@@ -31,6 +31,11 @@ class Settings:
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-5.1")
     openai_base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     openai_reasoning_effort: str = os.getenv("OPENAI_REASONING_EFFORT", "medium")
+    rag_vector_db_dir: str = os.getenv("RAG_VECTOR_DB_DIR", str(BASE_DIR / "data" / "knowledge" / "chroma"))
+    rag_collection_name: str = os.getenv("RAG_COLLECTION_NAME", "finance_knowledge")
+    rag_embedding_provider: str = os.getenv("RAG_EMBEDDING_PROVIDER", "sentence_transformers")
+    rag_embedding_model: str = os.getenv("RAG_EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    rag_embedding_batch_size: int = int(os.getenv("RAG_EMBEDDING_BATCH_SIZE", "32"))
 
 
 settings = Settings()

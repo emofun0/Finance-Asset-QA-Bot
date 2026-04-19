@@ -19,12 +19,6 @@ class RoutingDecisionResult(BaseModel):
     reason: str = Field(default="", max_length=240)
 
 
-class QueryRewriteResult(BaseModel):
-    rewritten_query: str = Field(min_length=1, max_length=500)
-    search_keywords: list[str] = Field(default_factory=list, max_length=12)
-    notes: list[str] = Field(default_factory=list, max_length=6)
-
-
 class GeneratedAnswerSections(BaseModel):
     summary: str = Field(min_length=1, max_length=400)
     analysis: list[str] = Field(default_factory=list, max_length=4)

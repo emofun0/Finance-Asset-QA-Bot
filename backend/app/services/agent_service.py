@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Iterator, TypedDict
+from typing import Iterator
 
 from app.core.company_catalog import find_company_profile
 from app.core.errors import AppError
+from app.llm.client import BaseLLMClient, NullLLMClient
 from app.llm.contracts import AgentPlanningResult
-from app.llm.langchain_factory import build_langchain_chat_model
 from app.llm.prompts import build_agent_planning_prompt, build_agent_response_prompt
 from app.observability.request_trace import trace_event
 from app.schemas.domain import IntentType, RouteDecision
@@ -18,26 +18,6 @@ from app.services.asset_qa_service import AssetQAService
 from app.services.chat_presenter_service import ChatPresenterService
 from app.services.knowledge_qa_service import KnowledgeQAService
 from app.services.session_memory_service import SessionMemoryService
-
-try:
-    from langchain_core.messages import HumanMessage, SystemMessage
-except ImportError:  # pragma: no cover - optional dependency at runtime
-    HumanMessage = None
-    SystemMessage = None
-
-try:
-    from langgraph.graph import END, START, StateGraph
-except ImportError:  # pragma: no cover - optional dependency at runtime
-    END = "__end__"
-    START = "__start__"
-    StateGraph = None
-
-
-class AgentGraphState(TypedDict, total=False):
-    request_message: str
-    plan: dict
-    answer_payload: dict
-    final_text: str
 
 
 @dataclass
@@ -62,6 +42,7 @@ class AgentToolExecutor:
         self.knowledge_qa_service = knowledge_qa_service
 
     def run(self, request: ChatRequest, plan: AgentPlanningResult) -> AnswerPayload:
+        request = self._with_retrieval_query(request, plan)
         if plan.tool_name == "asset_price":
             route = self._build_route(
                 intent=IntentType.ASSET_PRICE,
@@ -135,6 +116,13 @@ class AgentToolExecutor:
             details={"tool_name": plan.tool_name},
         )
 
+    def _with_retrieval_query(self, request: ChatRequest, plan: AgentPlanningResult) -> ChatRequest:
+        if not plan.rewritten_query:
+            return request
+        updated_request = request.model_copy(deep=True)
+        updated_request.metadata["retrieval_query"] = plan.rewritten_query
+        return updated_request
+
     def _resolve_time_range_days(self, plan: AgentPlanningResult, default_days: int) -> int:
         if plan.time_length is None:
             return default_days
@@ -186,17 +174,14 @@ class AgentToolExecutor:
 class AgentService:
     def __init__(
         self,
-        *,
-        provider: str | None,
-        model: str | None,
         asset_qa_service: AssetQAService,
         knowledge_qa_service: KnowledgeQAService,
         chat_presenter_service: ChatPresenterService,
         fallback_answer_service: AnswerService,
         session_memory_service: SessionMemoryService,
+        llm_client: BaseLLMClient | None = None,
     ) -> None:
-        self.provider = provider
-        self.model_name = model
+        self.llm_client = llm_client or NullLLMClient()
         self.chat_presenter_service = chat_presenter_service
         self.fallback_answer_service = fallback_answer_service
         self.session_memory_service = session_memory_service
@@ -204,11 +189,9 @@ class AgentService:
             asset_qa_service=asset_qa_service,
             knowledge_qa_service=knowledge_qa_service,
         )
-        self.model = build_langchain_chat_model(provider=provider, model=model)
-        self.graph = self._build_graph() if self.model is not None and StateGraph is not None else None
 
     def is_enabled(self) -> bool:
-        return self.graph is not None and HumanMessage is not None and SystemMessage is not None
+        return self.llm_client.is_enabled()
 
     def answer(self, request: ChatRequest) -> AnswerPayload:
         if not self.is_enabled():
@@ -299,57 +282,7 @@ class AgentService:
             fallback_message = self.fallback_answer_service.answer_chat(request)
             yield AgentStreamEvent(type="final", payload=fallback_message.model_dump(mode="json"))
 
-    def _build_graph(self):
-        workflow = StateGraph(AgentGraphState)
-        workflow.add_node("plan", self._plan_node)
-        workflow.add_node("call_tool", self._tool_node)
-        workflow.add_node("respond", self._respond_node)
-        workflow.add_edge(START, "plan")
-        workflow.add_conditional_edges(
-            "plan",
-            self._route_after_plan,
-            {
-                "call_tool": "call_tool",
-                "respond": "respond",
-            },
-        )
-        workflow.add_edge("call_tool", "respond")
-        workflow.add_edge("respond", END)
-        return workflow.compile()
-
-    def _plan_node(self, state: AgentGraphState) -> AgentGraphState:
-        plan = self._plan_request(ChatRequest(message=state["request_message"]))
-        return {"plan": plan.model_dump(mode="json")}
-
-    def _tool_node(self, state: AgentGraphState) -> AgentGraphState:
-        plan = AgentPlanningResult.model_validate(state["plan"])
-        request = ChatRequest(message=state["request_message"])
-        cached_answer = self.session_memory_service.get_cached_answer(request.session_id, plan)
-        if cached_answer is not None:
-            trace_event("agent.tool_cache_hit", {"question_type": cached_answer.question_type, "summary": cached_answer.summary})
-            answer = cached_answer
-        else:
-            answer = self._run_tool(request, plan)
-            self.session_memory_service.remember(request.session_id, plan, answer)
-        return {"answer_payload": answer.model_dump(mode="json")}
-
-    def _respond_node(self, state: AgentGraphState) -> AgentGraphState:
-        plan = AgentPlanningResult.model_validate(state["plan"])
-        if plan.tool_name == "direct_response":
-            final_text = (plan.direct_response or "当前无法可靠回答该问题。").strip()
-            return {"final_text": final_text}
-
-        answer = AnswerPayload.model_validate(state["answer_payload"])
-        final_text = self._render_final_text(state["request_message"], plan, answer)
-        return {"final_text": final_text}
-
-    def _route_after_plan(self, state: AgentGraphState) -> str:
-        plan = AgentPlanningResult.model_validate(state["plan"])
-        if plan.tool_name == "direct_response":
-            return "respond"
-        return "call_tool"
-
-    def _build_run_result(self, request: ChatRequest, state: AgentGraphState) -> AgentRunResult:
+    def _build_run_result(self, request: ChatRequest, state: dict) -> AgentRunResult:
         final_text = str(state.get("final_text") or "").strip()
         if "answer_payload" in state:
             answer = AnswerPayload.model_validate(state["answer_payload"])
@@ -375,20 +308,6 @@ class AgentService:
         )
         message = self.chat_presenter_service.build_message(answer, text_override=answer.summary)
         return AgentRunResult(answer=answer, message=message)
-
-    def _extract_message_text(self, message) -> str:
-        content = getattr(message, "content", "")
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts: list[str] = []
-            for item in content:
-                if isinstance(item, str):
-                    parts.append(item)
-                elif isinstance(item, dict) and item.get("type") == "text":
-                    parts.append(str(item.get("text") or ""))
-            return "".join(parts)
-        return str(content or "")
 
     def _run_request(self, request: ChatRequest) -> AgentRunResult:
         plan = self._plan_request(request)
@@ -426,12 +345,10 @@ class AgentService:
     def _plan_request(self, request: ChatRequest) -> AgentPlanningResult:
         context = self.session_memory_service.describe_context(request.session_id)
         system_prompt, user_prompt = build_agent_planning_prompt(request.message, context)
-        structured_model = self.model.with_structured_output(AgentPlanningResult)
-        plan = structured_model.invoke(
-            [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt),
-            ]
+        plan = self.llm_client.generate_structured(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            schema=AgentPlanningResult,
         )
         plan = self._normalize_plan(request.message, plan)
         plan = self.session_memory_service.fill_plan_from_memory(request.session_id, plan)
@@ -453,13 +370,12 @@ class AgentService:
 
         system_prompt, user_prompt = build_agent_response_prompt(request_message, answer)
         try:
-            response = self.model.invoke(
-                [
-                    SystemMessage(content=system_prompt),
-                    HumanMessage(content=user_prompt),
-                ]
+            final_text = "".join(
+                self.llm_client.generate_text_stream(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                )
             )
-            final_text = self._extract_message_text(response)
         except Exception as exc:
             trace_event("agent.respond_error", {"type": exc.__class__.__name__, "message": str(exc)})
             final_text = self.chat_presenter_service.build_message(answer).text
