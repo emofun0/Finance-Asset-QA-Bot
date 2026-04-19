@@ -100,6 +100,16 @@ class AgentToolExecutor:
             )
             return self.knowledge_qa_service.answer(request, route)
 
+        if plan.tool_name == "web_finance_knowledge":
+            route = self._build_route(
+                intent=IntentType.FINANCE_KNOWLEDGE,
+                plan=plan,
+                need_rag=True,
+            )
+            web_request = request.model_copy(deep=True)
+            web_request.metadata["search_backend"] = "web"
+            return self.knowledge_qa_service.answer(web_request, route)
+
         if plan.tool_name == "report_summary":
             route = self._build_route(
                 intent=IntentType.REPORT_SUMMARY,
@@ -107,6 +117,16 @@ class AgentToolExecutor:
                 need_rag=True,
             )
             return self.knowledge_qa_service.answer(request, route)
+
+        if plan.tool_name == "web_report_summary":
+            route = self._build_route(
+                intent=IntentType.REPORT_SUMMARY,
+                plan=plan,
+                need_rag=True,
+            )
+            web_request = request.model_copy(deep=True)
+            web_request.metadata["search_backend"] = "web"
+            return self.knowledge_qa_service.answer(web_request, route)
 
         raise AppError(
             code="UNSUPPORTED_AGENT_TOOL",
@@ -455,60 +475,21 @@ class AgentService:
             return "正在查询行情、检索新闻并归纳变化原因..."
         if plan.tool_name == "finance_knowledge":
             return "正在检索知识库并整理答案..."
+        if plan.tool_name == "web_finance_knowledge":
+            return "正在检索网页资料并整理答案..."
         if plan.tool_name == "report_summary":
             return "正在检索财报材料并提炼摘要..."
+        if plan.tool_name == "web_report_summary":
+            return "正在检索官网或网页财报材料..."
         return "正在执行工具..."
 
     def _normalize_plan(self, request_message: str, plan: AgentPlanningResult) -> AgentPlanningResult:
         normalized = plan.model_copy(deep=True)
-        message = request_message.lower()
-        has_time_range = normalized.time_length is not None or any(
-            token in message
-            for token in ["最近", "过去", "近", "年", "月", "周", "天", "走势", "趋势", "表现", "历史"]
-        )
-
-        if normalized.tool_name == "asset_price" and has_time_range:
-            normalized.tool_name = "asset_trend"
-            if not normalized.reason:
-                normalized.reason = "后端一致性校验：包含时间范围的股价问题改为趋势查询。"
-
-        asks_for_performance = any(token in message for token in ["怎么样", "如何", "表现"])
-        asks_for_latest_price = any(token in message for token in ["当前", "现在", "最新", "现价", "报价", "多少钱", "多少"])
-        if normalized.tool_name == "asset_price" and asks_for_performance and not asks_for_latest_price:
-            normalized.tool_name = "asset_trend"
-            if normalized.time_length is None:
-                normalized.time_length = 30
-                normalized.time_unit = "day"
-            if not normalized.reason:
-                normalized.reason = "后端一致性校验：口语化“股价怎么样”优先视为近期走势查询。"
-
-        if normalized.tool_name == "direct_response" and self._looks_like_finance_knowledge_request(request_message):
-            normalized.tool_name = "finance_knowledge"
-            normalized.direct_response = None
-            if not normalized.rewritten_query:
-                normalized.rewritten_query = request_message.strip()
-            if not normalized.reason:
-                normalized.reason = "后端一致性校验：金融术语解释问题优先走 finance_knowledge 检索链路。"
-
+        if normalized.rewritten_query:
+            normalized.rewritten_query = normalized.rewritten_query.strip()
+        if normalized.direct_response:
+            normalized.direct_response = normalized.direct_response.strip()
         return normalized
-
-    def _looks_like_finance_knowledge_request(self, message: str) -> bool:
-        lowered = message.lower().strip()
-        finance_terms = [
-            "什么是",
-            "是什么意思",
-            "纳斯达克",
-            "纳指",
-            "大a",
-            "大a股",
-            "a股",
-            "市盈率",
-            "beta",
-            "pe ratio",
-            "price to earnings",
-            "price-to-earnings",
-        ]
-        return any(term in lowered for term in finance_terms)
 
     def _build_tool_request(
         self,
@@ -519,6 +500,8 @@ class AgentService:
         tool_request = request.model_copy(deep=True)
         if plan.rewritten_query:
             tool_request.metadata["retrieval_query"] = plan.rewritten_query.strip()
+        if plan.tool_name in {"web_finance_knowledge", "web_report_summary"}:
+            tool_request.metadata["search_backend"] = "web"
 
         if related_answer is None:
             return tool_request

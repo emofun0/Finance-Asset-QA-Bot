@@ -1,282 +1,83 @@
-# Finance Asset QA System
+# 金融资产问答系统
 
-## 当前状态
+基于当前仓库代码实现的全栈金融问答项目。系统把问题分成两条主链路：
 
-当前已完成阶段 0 到阶段 6：
+- 资产问答：价格、走势、异动原因分析，走市场数据与网页检索链路。
+- 金融知识问答：术语解释、财报摘要，走本地知识库检索与受约束生成链路。
 
-- 前端基础工程目录
-- 后端 FastAPI 基础工程目录与问答主链路
-- 资产价格/走势问答
-- 中文优先的 RAG 知识库与财报摘要能力
-- Prompt 模板、结构化生成与校验层
-- 前端 MVP 页面与端到端联调
-- phase 6 联调、日志、题型回归与交付整理
-- 环境变量模板
-- 阶段文档
+项目包含 React + Vite 前端、FastAPI 后端、RAG 知识库、可切换的 LLM 提供方，以及面向调试的 trace 日志接口。
 
-## 系统架构图
+## 当前已实现能力
 
-```mermaid
-flowchart LR
-    UI[React Frontend] --> API[FastAPI /api/v1/chat]
-    API --> TRACE[Request Trace Logger]
-    API --> ROUTER[Router Service]
-    ROUTER --> MARKET[MarketDataTool / Yahoo Finance]
-    ROUTER --> RAG[Knowledge Retriever]
-    ROUTER --> EVENT[Web Search / Event Search]
-    ROUTER --> LLM[LLM Client]
-    RAG --> KB[(Local Knowledge Base)]
-    EVENT --> WEB[Official Sites / Trusted News]
-    MARKET --> ANSWER[Answer Service]
-    RAG --> ANSWER
-    EVENT --> ANSWER
-    LLM --> ANSWER
-    ANSWER --> VERIFY[Verification Service]
-    VERIFY --> API
-    TRACE --> LOGS[(backend/logs/traces)]
+- 聊天式问答界面，支持流式输出、模型选择、会话重置。
+- 行情接口：`/api/v1/assets/{symbol}/price`、`/api/v1/assets/{symbol}/history`
+- 问答接口：`/api/v1/chat`、`/api/v1/chat/stream`
+- 路由能力：价格、趋势、事件归因、金融知识、财报摘要
+- 本地知识库构建与重建：`backend/scripts/build_knowledge_base.py`、`/api/v1/rag/ingest`
+- 网页检索补充：财报摘要与事件归因支持官方站点/新闻站点检索回退
+- Trace 查看：`/api/v1/traces`
+
+## 目录结构
+
+```text
+.
+├── backend
+│   ├── app
+│   │   ├── api            # FastAPI 路由
+│   │   ├── core           # 配置、错误、公司别名表
+│   │   ├── llm            # LLM 客户端、提示词、结构化输出契约
+│   │   ├── rag            # 分块、索引、检索
+│   │   ├── services       # 路由、资产问答、知识问答、Agent、校验等
+│   │   ├── tools          # 市场数据、网页检索
+│   │   └── observability  # 请求 trace
+│   ├── data/knowledge     # source_manifest、raw、processed、index
+│   ├── scripts            # 知识库构建与评估脚本
+│   └── tests
+├── frontend
+│   ├── src/components     # 图表等组件
+│   ├── src/services       # 前端 API 调用
+│   └── src/types
+└── 金融资产问答系统（Financial Asset QA System）.docx
 ```
 
-## 环境要求
+## 技术栈
 
-- Conda 环境：`finance-qa`
-- Python：3.11
-- Node.js：已安装
-- npm：已安装
+- 前端：React 19、TypeScript、Vite、Ant Design、ECharts
+- 后端：FastAPI、Pydantic、Uvicorn
+- 市场数据：`yfinance`
+- 网页检索：`ddgs`
+- 文档处理：BeautifulSoup、PyPDF、`pdftotext`
+- 向量检索：scikit-learn 本地向量化与稀疏矩阵索引
+- LLM 集成：OpenAI、Ollama、LangChain、LangGraph
 
-## 后端启动
+## 运行方式
 
-先安装依赖：
+### 1. 后端依赖
 
 ```bash
-conda run -n finance-qa python -m pip install -r backend/requirements.txt
+cd backend
+pip install -r requirements.txt
 ```
 
-可选环境变量：
-
-```bash
-export LLM_PROVIDER=ollama
-export OLLAMA_MODEL=llama3.1:8b
-export LLM_ENABLE_ROUTING=true
-```
-
-如果改用 OpenAI：
-
-```bash
-export LLM_PROVIDER=openai
-export OPENAI_API_KEY=你的_key
-export OPENAI_MODEL=gpt-5.1
-```
-
-本地演示推荐：
-
-```bash
-export LLM_PROVIDER=ollama
-export OLLAMA_MODEL=llama3.1:8b
-export LLM_ENABLE_ROUTING=true
-export LLM_ENABLE_QUERY_REWRITE=true
-export LLM_ENABLE_GENERATION=false
-export LLM_ENABLE_VERIFICATION=false
-```
-
-再启动服务：
-
-```bash
-conda run -n finance-qa uvicorn app.main:app --reload --app-dir backend
-```
-
-后端健康检查：
-
-```bash
-curl http://127.0.0.1:8000/api/v1/health
-```
-
-## 前端启动
-
-先安装依赖：
+### 2. 前端依赖
 
 ```bash
 cd frontend
 npm install
 ```
 
-再启动开发服务器：
+### 3. 环境变量
 
-```bash
-cd frontend
-npm run dev
-```
+后端通过仓库根目录 `.env` 读取配置，代码里实际使用到的核心变量来自 [backend/app/core/config.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/app/core/config.py:1)：
 
-默认访问：
-
-```text
-http://127.0.0.1:5173
-```
-
-说明：
-
-- 前端开发服务器已配置 `/api` 代理到 `http://127.0.0.1:8000`
-- 默认无需额外配置 `VITE_API_BASE_URL`
-- 如果前后端分开部署，可通过 `VITE_API_BASE_URL` 指定后端地址
-
-## 目录说明
-
-- `backend/`: FastAPI 后端
-- `frontend/`: React + TypeScript + Vite 前端
-- `docs/`: 架构与执行文档
-
-## 阶段 0 验证
-
-- 后端路由已确认包含 `/api/v1/health`
-- 后端测试：`conda run -n finance-qa python -m pytest tests/test_health.py -q`
-- 前端构建：`cd frontend && npm run build`
-
-说明：
-
-当前 Codex 沙箱禁止本地端口监听，因此本轮验证采用后端测试与前端构建通过作为阶段 0 的可运行依据。
-
-## 阶段 1 接口示例
-
-资产类问题：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"阿里巴巴当前股价是多少？"}'
-```
-
-知识类问题：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"什么是市盈率？"}'
-```
-
-说明：
-
-- 阶段 1 返回的是主链路骨架响应
-- 已具备统一请求结构、统一响应结构、基础意图路由和错误处理
-- 真实行情、RAG 和生成链路会在后续阶段补齐
-
-## 阶段 2 接口示例
-
-安装新增依赖：
-
-```bash
-cd backend
-conda run -n finance-qa python -m pip install -r requirements.txt
-```
-
-直接查询价格：
-
-```bash
-curl http://127.0.0.1:8000/api/v1/assets/BABA/price
-```
-
-直接查询历史走势：
-
-```bash
-curl "http://127.0.0.1:8000/api/v1/assets/BABA/history?days=7"
-```
-
-通过统一问答接口查询走势：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"BABA 最近 7 天涨跌情况如何？"}'
-```
-
-说明：
-
-- 阶段 2 已接入 Yahoo Finance 市场数据
-- 已支持当前价格、最近 7/30 天趋势分析、基础走势图数据
-- “为什么涨跌”这类事件归因仍未接入新闻与公告检索，当前只会明确降级说明
-
-## 阶段 3：RAG 知识库
-
-知识库目录：
-
-- `backend/data/knowledge/source_manifest.json`: 知识源清单
-- `backend/data/knowledge/raw/`: 原始下载文件
-- `backend/data/knowledge/processed/`: 结构化文本
-- `backend/data/knowledge/index/`: 切块与向量索引
-
-当前知识库以中文资料为主，包含：
-
-- 中国证监会投教文章
-- 腾讯、阿里巴巴、宁德时代、小米、贵州茅台、招商银行等公司披露材料
-- Apple、Tesla 等英文补充材料
-
-运行时公司覆盖策略：
-
-- 本地知识库优先使用已入库的中文/英文官方资料
-- 若本地未命中，则降级到官方网页检索
-- 当前已内置当前中美市值前 10 公司别名和官方域名清单，便于网页检索兜底
-
-当前内置的中美重点公司包括：
-
-- 中国：Tencent、ICBC、Agricultural Bank of China、China Construction Bank、Alibaba、PetroChina、CATL、Bank of China、Moutai、China Mobile
-- 美国：NVIDIA、Alphabet、Apple、Microsoft、Amazon、Broadcom、Meta、Tesla、Berkshire Hathaway、Walmart
-
-重建知识库：
-
-```bash
-cd backend
-conda run -n finance-qa python scripts/build_knowledge_base.py
-```
-
-通过 API 重建索引：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/rag/ingest
-```
-
-知识问答示例：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"什么是市盈率？"}'
-```
-
-财报摘要示例：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"腾讯最近财报摘要是什么？"}'
-```
-
-阶段 3 验证：
-
-- 自动化测试：`cd backend && conda run -n finance-qa python -m pytest tests -q`
-- 实际索引构建：`cd backend && conda run -n finance-qa python scripts/build_knowledge_base.py`
-- 接口检查：`/api/v1/chat`、`/api/v1/rag/ingest`
-
-网页检索回退示例：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"英伟达最近财报摘要是什么？"}'
-```
-
-说明：
-
-- 如果本地知识库未覆盖目标公司，系统会检索官方 IR / SEC / Investor.gov 页面
-- 当前网页检索只接受官方域名结果，避免把回答建立在论坛或二手转载上
-
-## 阶段 4：Prompt、结构化生成与校验
-
-当前支持两类 LLM 提供方：
-
-- `ollama`：本地模型，当前已实测 `llama3.1:8b` 与 `phi4-reasoning:14b`
-- `openai`：官方 `openai` Python SDK，走 `Responses API`
-
-关键环境变量：
-
-```bash
+```env
+APP_NAME=Finance Asset QA System
+APP_ENV=development
+APP_HOST=0.0.0.0
+APP_PORT=8000
+FRONTEND_PORT=5173
+KNOWLEDGE_BASE_DIR=backend/data/knowledge
+TRACE_LOG_DIR=backend/logs/traces
 LLM_PROVIDER=ollama
 LLM_ENABLE_ROUTING=true
 LLM_ENABLE_GENERATION=true
@@ -286,156 +87,172 @@ LLM_TIMEOUT_SECONDS=120
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=llama3.1:8b
 OPENAI_API_KEY=
-OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-5.1
+OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_REASONING_EFFORT=medium
 ```
 
-当前 Prompt/校验链路包括：
+前端还需要配置：
 
-- `router`: 规则抽取 + LLM 路由合并
-- `query_rewrite`: 把用户问题改写为更适合本地检索与官方网页检索的查询
-- `answer_generation`: 基于草稿回答做结构化归纳，不允许发明数字和来源
-- `verification`: 二次检查结构、来源边界和结论越界
-
-当前保守规则：
-
-- 知识问答和财报摘要在 `source_mode=not_found` 或 `sources=[]` 时，不允许 LLM 用常识补答
-- 中文概念词条会优先尝试本地中文知识库，未命中时可回退到 `Investor.gov` 等英文官方源
-- 资产价格类回答允许 LLM 做轻量润色，但不会修改 `objective_data` 中的客观数字
-
-本地 Ollama 冒烟测试：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"BABA 当前股价是多少？"}'
-
-curl -X POST http://127.0.0.1:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"什么是市盈率？"}'
+```env
+VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-阶段 4 验证：
-
-- 单元测试：`conda run -n finance-qa python -m pytest backend/tests -q`
-- 本地结构化生成：已验证 `OllamaLLMClient` 可返回可解析 JSON
-- OpenAI 接口：已验证无 `OPENAI_API_KEY` 时安全降级；配置 key 后可切换到官方接口
-
-OpenAI 接口实现说明：
-
-- 当前使用官方 `openai` Python SDK
-- 新接口优先采用 `Responses API`
-- 结构化输出使用 `client.responses.parse(...)`
-
-相关文档：
-
-- `docs/prompt-design.md`
-- `docs/working-plan.md`
-
-## 阶段 5：前端 MVP
-
-当前前端已提供一个单页演示界面，包含：
-
-- 问答输入区
-- 结构化回答摘要
-- 客观数据表格
-- 分析说明、来源、限制说明
-- 资产问题对应的价格走势图
-
-页面当前行为：
-
-- 调用主接口：`POST /api/v1/chat`
-- 资产类回答会自动补拉 `GET /api/v1/assets/{symbol}/history`
-- 知识问答和财报摘要不展示图表，只展示结构化结果
-
-阶段 5 验证：
-
-- 前端构建：`cd frontend && npm run build`
-- 后端测试：`conda run -n finance-qa python -m pytest backend/tests -q`
-- 前后端联调：
+### 4. 启动后端
 
 ```bash
-curl -X POST http://127.0.0.1:5173/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"BABA 当前股价是多少？"}'
-
-curl "http://127.0.0.1:5173/api/v1/assets/BABA/history?days=30"
+uvicorn app.main:app --app-dir backend --reload --host 0.0.0.0 --port 8000
 ```
 
-当前已验证：
-
-- `http://127.0.0.1:5173` 可正常返回前端页面
-- 前端代理到后端的 `/api` 请求可正常工作
-- 资产问答和知识问答都可在端到端链路上返回结构化结果
-
-## 阶段 6：联调、Trace 与回归
-
-阶段 6 新增内容：
-
-- LLM 路由：`RouterService` 已支持 `规则抽取 + LLM 结构化路由`
-- 事件归因：资产事件问题会结合价格窗口和网页检索进行归因
-- 全链路 trace：每次网页问答都会记录路由、检索、prompt、输出和最终响应
-- 作业题型回归：已对文档原题和变体题做真实接口回归
-
-Trace 目录与接口：
-
-- 日志目录：`backend/logs/traces/`
-- 列表接口：`GET /api/v1/traces`
-- 详情接口：`GET /api/v1/traces/{request_id}`
-
-Trace 示例：
+### 5. 启动前端
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"PE ratio 是什么？"}'
-
-curl http://127.0.0.1:8000/api/v1/traces/<request_id>
+cd frontend
+npm run dev
 ```
 
-当前 trace 已记录的关键阶段包括：
+### 6. 重建知识库
 
-- `router.heuristic`
-- `router.prompt`
-- `router.llm`
-- `query_rewrite.prompt`
-- `query_rewrite.output`
-- `rag.retrieve`
-- `rag.results`
-- `answer.draft`
-- `answer.final`
+如果修改了 `backend/data/knowledge/source_manifest.json` 或原始资料，需要重新构建：
 
-作业题型回归结果：
+```bash
+python backend/scripts/build_knowledge_base.py
+```
 
-- 文档原题：`7 / 7` 通过
-- 变体题：`5 / 5` 通过
-- 合计：`12 / 12` 通过
+也可以在服务启动后调用：
 
-已验证的问题包括：
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/rag/ingest
+```
 
-- `阿里巴巴当前股价是多少？`
-- `BABA 最近 7 天涨跌情况如何？`
-- `阿里巴巴最近为何1月15日大涨？`
-- `特斯拉近期走势如何？`
-- `什么是市盈率？`
-- `收入和净利润的区别是什么？`
-- `腾讯最近季度财报摘要是什么？`
-- `阿里现在多少钱？`
-- `TSLA 这周表现怎么样？`
-- `英伟达 2026-01-15 为什么涨？`
-- `PE ratio 是什么？`
-- `苹果最近季度业绩摘要是什么？`
+### 7. 运行测试
 
-阶段 6 验证：
+```bash
+cd backend
+pytest
+```
 
-- 后端测试：`conda run -n finance-qa python -m pytest backend/tests -q`
-- 前端构建：`cd frontend && npm run build`
-- 知识库重建：`conda run -n finance-qa python backend/scripts/build_knowledge_base.py`
-- 题型回归：`conda run -n finance-qa python backend/scripts/run_phase6_eval.py`
+## 主要接口
 
-已知取舍：
+- `GET /api/v1/health`：健康检查
+- `GET /api/v1/llm/models`：返回前端可选模型列表
+- `POST /api/v1/chat`：非流式问答
+- `POST /api/v1/chat/stream`：SSE 流式问答
+- `POST /api/v1/chat/session/reset`：清空当前会话缓存
+- `GET /api/v1/assets/{symbol}/price`：最新价格快照
+- `GET /api/v1/assets/{symbol}/history?days=30`：区间历史价格
+- `POST /api/v1/rag/ingest`：重建知识库索引
+- `GET /api/v1/traces`：查看请求 trace 列表
+- `GET /api/v1/traces/{request_id}`：查看单次请求 trace 详情
 
-- 本地 Ollama 在首次冷启动时会有明显模型加载延迟
-- 为了保证本地演示流畅，推荐开启 `LLM 路由 + query rewrite`，并按需关闭生成/校验
-- 事件归因属于“基于已检索证据的高概率解释”，不是确定性因果证明
+## 作业要求对应说明
+
+### 1. 系统架构图
+
+```text
+前端 React/Vite
+   │
+   ├── /api/v1/llm/models
+   ├── /api/v1/chat/stream
+   └── /api/v1/assets/{symbol}/history
+   │
+FastAPI API 层
+   │
+   └── AgentService / AnswerService
+        │
+        ├── RouterService
+        │    ├── 规则路由
+        │    └── 可选 LLM 路由增强
+        │
+        ├── 资产问答链路 AssetQAService
+        │    ├── MarketDataTool -> yfinance
+        │    └── OfficialWebSearchTool -> ddgs 新闻/网页检索
+        │
+        └── 知识问答链路 KnowledgeQAService
+             ├── QueryRewriteService
+             ├── KnowledgeRetriever
+             ├── LocalVectorStore
+             └── OfficialWebSearchTool（检索不足时回退）
+```
+
+对应代码位置：
+
+- 应用入口：[backend/app/main.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/app/main.py:1)
+- API 路由聚合：[backend/app/api/routes/__init__.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/app/api/routes/__init__.py:1)
+- Agent 主链路：[backend/app/services/agent_service.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/app/services/agent_service.py:1)
+- 传统回答链路：[backend/app/services/answer_service.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/app/services/answer_service.py:1)
+
+### 2. 技术选型说明
+
+- 前端选择 React + Vite，是因为当前仓库需要一个轻量的单页问答界面，并且已经实现了流式 SSE 消费、模型切换与图表展示。
+- 后端选择 FastAPI，适合快速组织问答、资产、RAG、trace 等多类接口，且与 Pydantic 模型配合紧密。
+- 资产行情选择 `yfinance`，代码中的价格快照、历史价格与区间行情均通过 [backend/app/tools/market_data_tool.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/app/tools/market_data_tool.py:1) 获取。
+- RAG 没有引入外部向量数据库，而是采用本地分块 + scikit-learn 向量化 + 稀疏矩阵索引，落地简单，适合作业规模与离线构建。
+- 网页检索使用 `ddgs`，一方面给事件归因补新闻线索，另一方面给知识问答和财报摘要提供本地资料不足时的补充来源。
+- LLM 侧同时兼容 OpenAI 与 Ollama，前端通过 `/api/v1/llm/models` 动态拉取可用模型列表。
+
+### 3. Prompt 设计思路
+
+当前仓库的提示词集中在 [backend/app/llm/prompts.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/app/llm/prompts.py:1)，设计原则是“先约束边界，再输出结构化结果”。
+
+- 路由提示词：要求模型只在 `asset_price`、`asset_trend`、`asset_event_analysis`、`finance_knowledge`、`report_summary`、`unknown` 中做保守分类，不允许编造公司、代码和日期。
+- 查询改写提示词：仅改写检索表达，不改变问题意图，重点补齐公司英文名、股票代码、报告类型和财务指标。
+- 回答生成提示词：严格要求只能基于草稿中的 `objective_data`、`sources` 和检索证据润色，禁止补数字和补事实。
+- 校验提示词：专门检查越界推断、结构缺失、来源不足、数字冲突；如果知识/财报类问题没证据，必须改写成“依据不足”的保守回答。
+- Agent 规划提示词：先选工具，再给参数；若系统无法可靠调用工具，则必须退回 `direct_response`。
+- 事件归因提示词：只允许基于标题、来源和摘录做中文归因观察，证据不足时只能写“可能与……有关”。
+
+这套设计与代码实现是一致的：资产问答直接返回工具结果，不经过回答生成与校验；知识问答与财报摘要则进入生成和校验阶段。[backend/tests/test_asset_qa_service.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/tests/test_asset_qa_service.py:1) 和 [backend/tests/test_chat_api.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/tests/test_chat_api.py:1) 已覆盖其中一部分行为。
+
+### 4. 数据来源说明
+
+当前仓库里能确认的真实数据来源如下：
+
+- 市场行情：Yahoo Finance，经由 `yfinance` 调用。
+- 本地知识库原始资料：`backend/data/knowledge/source_manifest.json` 中登记的 PDF、HTML 和内联文本，处理后写入 `raw/`、`processed/`、`index/`。
+- 网页检索：DuckDuckGo Search，经由 `ddgs` 调用。
+- 财报/事件检索约束域名：公司 `official_domains` 与若干新闻站点白名单，见 [backend/app/core/company_catalog.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/app/core/company_catalog.py:1) 与 [backend/app/tools/web_search_tool.py](/home/ypw/Codes/Finance_Asset_QA_System/backend/app/tools/web_search_tool.py:1)。
+
+知识库中已经入库的资料类型包括：
+
+- 财报、业绩快报、季度演示材料
+- 金融基础概念与投资入门材料
+- 中英文混合资料，检索时会结合语言偏好与文档类型做排序
+
+对应处理流程：
+
+1. `source_manifest.json` 定义来源元数据
+2. `build_knowledge_base.py` 下载或读取原始资料
+3. HTML/PDF 转文本后写入 `processed/`
+4. `KnowledgeBaseBuilder` 进行分块、向量化、索引落盘
+5. `KnowledgeRetriever` 执行本地检索与重排
+
+### 5. 优化与扩展思考
+
+以下内容只基于当前代码能直接看出的扩展方向，不代表已经实现：
+
+- 市场数据层目前只接了 Yahoo Finance，可继续增加 Alpha Vantage、Polygon 等多数据源，并做交叉校验与失败切换。
+- 本地检索目前是轻量级稀疏向量方案，若知识库规模继续扩大，可以升级到专用向量库并加入更细粒度的召回/重排策略。
+- 事件归因仍依赖网页标题和摘要，后续可以增加正文抓取、公告抽取和时间线对齐，提升归因质量。
+- `company_catalog` 目前维护的是有限公司映射表，后续可扩展为外部配置或数据库，降低代码维护成本。
+- 目前已有 trace 接口，但缺少更系统的离线评估报表，可以把 `backend/scripts/run_phase6_eval.py` 进一步做成稳定的评测流程。
+
+## 与题目要求的对应关系
+
+- 资产问答必须使用市场数据 API：已满足，资产链路走 `MarketDataTool`
+- 金融知识问答基于 RAG：已满足，包含分块、向量化、检索与网页回退
+- Web 前端界面：已满足
+- 后端 API 服务：已满足
+- LLM 集成模块：已满足，支持 OpenAI 与 Ollama
+- 向量检索模块：已满足
+
+当前仍需你在交付阶段自行补齐的内容不在代码里：
+
+- 3 分钟演示视频
+
+## 已知边界
+
+- 资产价格与走势使用最近可得市场数据，不保证逐笔实时。
+- 事件归因只提供高概率解释，不做确定性因果判断。
+- 财报摘要与知识问答严格受检索证据约束，资料不足时会返回保守结论。
+- 仓库当前工作区中 `.env.example` 与旧版 `README.md` 曾被删除；本 README 仅基于现有代码重新整理。

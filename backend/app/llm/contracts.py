@@ -45,7 +45,9 @@ class AgentPlanningResult(BaseModel):
         "asset_trend",
         "asset_event_analysis",
         "finance_knowledge",
+        "web_finance_knowledge",
         "report_summary",
+        "web_report_summary",
         "direct_response",
     ]
     thought: str = Field(min_length=1, max_length=240)

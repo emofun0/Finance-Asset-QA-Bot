@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 from typing import Any
 
@@ -82,6 +84,21 @@ def collect_html_lines(root: BeautifulSoup, selectors: list[str]) -> list[str]:
 
 
 def extract_pdf_text(path: Path) -> str:
+    pdftotext_binary = shutil.which("pdftotext")
+    if pdftotext_binary:
+        try:
+            completed = subprocess.run(
+                [pdftotext_binary, "-layout", str(path), "-"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            text = normalize_whitespace(completed.stdout)
+            if text:
+                return text
+        except Exception:
+            pass
+
     reader = PdfReader(str(path))
     pages: list[str] = []
     for page in reader.pages:

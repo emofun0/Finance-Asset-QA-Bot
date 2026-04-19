@@ -11,11 +11,11 @@ from app.services.asset_qa_service import AssetQAService
 from app.services.chat_presenter_service import ChatPresenterService
 from app.services.knowledge_qa_service import KnowledgeQAService
 from app.services.llm_catalog_service import LLMCatalogService
-from app.services.query_rewrite_service import QueryRewriteService
 from app.services.router_service import RouterService
 from app.services.session_memory_service import SessionMemoryService
 from app.services.verification_service import VerificationService
 from app.tools.market_data_tool import MarketDataTool
+from app.tools.rag_search_tool import RagSearchTool
 from app.tools.web_search_tool import OfficialWebSearchTool
 
 
@@ -40,9 +40,8 @@ def get_asset_qa_service(provider: str | None = None, model: str | None = None) 
 
 def get_knowledge_qa_service(provider: str | None = None, model: str | None = None) -> KnowledgeQAService:
     return KnowledgeQAService(
-        retriever=get_knowledge_retriever(),
+        rag_search_tool=get_rag_search_tool(),
         web_search_tool=get_web_search_tool(),
-        query_rewrite_service=get_query_rewrite_service(provider=provider, model=model),
     )
 
 
@@ -93,16 +92,16 @@ def get_knowledge_retriever() -> KnowledgeRetriever:
     return KnowledgeRetriever(settings.knowledge_base_dir)
 
 
+def get_rag_search_tool() -> RagSearchTool:
+    return RagSearchTool(get_knowledge_retriever())
+
+
 def get_web_search_tool() -> OfficialWebSearchTool:
     return OfficialWebSearchTool()
 
 
 def get_llm_client(provider: str | None = None, model: str | None = None) -> BaseLLMClient:
     return build_llm_client(provider=provider, model=model)
-
-
-def get_query_rewrite_service(provider: str | None = None, model: str | None = None) -> QueryRewriteService:
-    return QueryRewriteService(llm_client=get_llm_client(provider=provider, model=model))
 
 
 def get_answer_generation_service(provider: str | None = None, model: str | None = None) -> AnswerGenerationService:

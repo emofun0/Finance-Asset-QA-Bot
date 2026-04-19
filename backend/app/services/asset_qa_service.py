@@ -487,9 +487,47 @@ class AssetQAService:
             trace_event("asset.event_observation_error", {"type": exc.__class__.__name__, "message": str(exc)})
             return []
 
-        observations = [item.strip() for item in parsed.observations if item.strip()]
+        observations = self._sanitize_llm_event_observations(parsed.observations, results)
         trace_event("asset.event_observation_output", {"observations": observations})
         return observations[:3]
+
+    def _sanitize_llm_event_observations(self, observations: list[str], results: list) -> list[str]:
+        sanitized: list[str] = []
+        titles = {
+            self._normalize_event_text(str(result.metadata.get("title") or ""))
+            for result in results[:3]
+            if str(result.metadata.get("title") or "").strip()
+        }
+
+        for item in observations:
+            text = item.strip()
+            if not text:
+                continue
+            if not self._is_usable_event_observation(text, titles):
+                continue
+            if text[-1] not in "。！？":
+                text = f"{text}。"
+            sanitized.append(text)
+
+        return sanitized
+
+    def _is_usable_event_observation(self, text: str, titles: set[str]) -> bool:
+        normalized = self._normalize_event_text(text)
+        if not normalized:
+            return False
+        if normalized in titles:
+            return False
+        if len(text) < 12:
+            return False
+        if self._contains_mostly_ascii(text):
+            return False
+        return bool(self._contains_chinese(text))
+
+    def _normalize_event_text(self, text: str) -> str:
+        return " ".join(text.strip().lower().split())
+
+    def _contains_chinese(self, text: str) -> bool:
+        return bool(text) and any("\u4e00" <= char <= "\u9fff" for char in text)
 
     def _to_event_sources(self, results: list) -> list[SourceItem]:
         return [
