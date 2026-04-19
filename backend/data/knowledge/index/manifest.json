@@ -1,6 +1,6 @@
 {
-  "document_count": 26,
-  "chunk_count": 1291,
+  "document_count": 28,
+  "chunk_count": 1353,
   "documents": [
     {
       "doc_id": "alibaba_2025_annual_report",
@@ -113,16 +113,6 @@
       "url": "https://s3gw.cmbchina.com/lb5001-cmbweb-prd-1255000097/cmbir/20250829/74edd10f-f85c-40f4-978d-6e826142d944.pdf"
     },
     {
-      "doc_id": "en_core_finance_terms",
-      "title": "Core Finance Terms Reference",
-      "doc_type": "glossary",
-      "language": "en",
-      "source_name": "Project Curated Knowledge",
-      "company": null,
-      "symbol": null,
-      "url": "manual://en-core-finance-terms"
-    },
-    {
       "doc_id": "en_investor_glossary",
       "title": "Investor.gov Glossary",
       "doc_type": "glossary",
@@ -223,14 +213,44 @@
       "url": "https://www.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042401120_c.pdf"
     },
     {
-      "doc_id": "zh_core_finance_concepts",
-      "title": "金融核心概念术语卡",
-      "doc_type": "glossary",
+      "doc_id": "zh_bond_and_fund_topic",
+      "title": "“债券和基金”专题",
+      "doc_type": "education_guide",
       "language": "zh",
-      "source_name": "Project Curated Knowledge",
+      "source_name": "中国投资者网",
       "company": null,
       "symbol": null,
-      "url": "manual://zh-core-finance-concepts"
+      "url": "https://www.investor.org.cn/xxzx/tjzl/tjnrgmjytx/bk/kj/jyxl_3797/202311/P020231123531222554368.pdf"
+    },
+    {
+      "doc_id": "zh_bond_investing_basics",
+      "title": "投资入市 应知应会——债券篇",
+      "doc_type": "education_guide",
+      "language": "zh",
+      "source_name": "中国投资者网",
+      "company": null,
+      "symbol": null,
+      "url": "https://www.investor.org.cn/rdhd/515qgtzzbhxcr/2024/tjzphj_1/wz/zqqhjczspj/202405/P020240531373070834294.pdf"
+    },
+    {
+      "doc_id": "zh_derivatives_basic_terms",
+      "title": "盛博士带你学金融——股指期货和股指期权篇",
+      "doc_type": "education_guide",
+      "language": "zh",
+      "source_name": "中国投资者网",
+      "company": null,
+      "symbol": null,
+      "url": "https://www.investor.org.cn/hdjl/tjzppx/dcjxtjhh/202504/P020250411655730323426.pdf"
+    },
+    {
+      "doc_id": "zh_finance_literacy_basic_terms",
+      "title": "盛博士带你学金融——金融常识篇",
+      "doc_type": "education_guide",
+      "language": "zh",
+      "source_name": "中国投资者网",
+      "company": null,
+      "symbol": null,
+      "url": "https://www.investor.org.cn/hdjl/tjzppx/dcjxtjhh/202504/P020250411655729003136.pdf"
     },
     {
       "doc_id": "zh_financial_analysis_csrc",
@@ -243,24 +263,24 @@
       "url": "https://www.csrc.gov.cn/ningxia/c105510/c5994748/content.shtml"
     },
     {
-      "doc_id": "zh_market_terms_glossary",
-      "title": "市场结构与行情术语卡",
-      "doc_type": "glossary",
+      "doc_id": "zh_fund_newbie_guide",
+      "title": "〖权益360〗基金投资新手攻略（一）",
+      "doc_type": "knowledge_article",
       "language": "zh",
-      "source_name": "Project Curated Knowledge",
+      "source_name": "中国投资者网",
       "company": null,
       "symbol": null,
-      "url": "manual://zh-market-terms-glossary"
+      "url": "https://www.investor.org.cn/xxzx/tjzl/hzzl/szb/rights_and_interests360/202503/t20250314_801767.shtml"
     },
     {
-      "doc_id": "zh_trading_terms_glossary",
-      "title": "交易机制核心术语卡",
-      "doc_type": "glossary",
+      "doc_id": "zh_stock_basics_public_handout",
+      "title": "股票基础知识（社会人士）主题讲义",
+      "doc_type": "education_guide",
       "language": "zh",
-      "source_name": "Project Curated Knowledge",
+      "source_name": "中国投资者网",
       "company": null,
       "symbol": null,
-      "url": "manual://zh-trading-terms-glossary"
+      "url": "https://www.investor.org.cn/xxzx/tjzl/tjnrgmjytx/bk/kj/jyxl_3798/202311/P020231123537555786093.pdf"
     }
   ]
 }

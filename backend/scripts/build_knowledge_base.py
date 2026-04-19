@@ -53,7 +53,14 @@ def extract_html_text(html: str) -> str:
     for tag in soup(["script", "style", "noscript", "svg", "img", "video", "audio"]):
         tag.decompose()
 
-    root = soup.find("article") or soup.find("main") or soup.find("body") or soup
+    root = (
+        soup.select_one("div.TRS_Editor")
+        or soup.select_one("div.text_content_detail_content")
+        or soup.find("article")
+        or soup.find("main")
+        or soup.find("body")
+        or soup
+    )
     lines = collect_html_lines(root, ["h1", "h2", "h3", "p", "li", "td", "th"])
     if not lines:
         lines = collect_html_lines(root, ["div", "font", "span"])

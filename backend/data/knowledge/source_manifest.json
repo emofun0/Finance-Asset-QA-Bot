@@ -17,6 +17,60 @@
     "doc_type": "glossary"
   },
   {
+    "doc_id": "zh_stock_basics_public_handout",
+    "title": "股票基础知识（社会人士）主题讲义",
+    "url": "https://www.investor.org.cn/xxzx/tjzl/tjnrgmjytx/bk/kj/jyxl_3798/202311/P020231123537555786093.pdf",
+    "source_name": "中国投资者网",
+    "language": "zh",
+    "doc_type": "education_guide",
+    "published_at": "2023-10-31"
+  },
+  {
+    "doc_id": "zh_bond_and_fund_topic",
+    "title": "“债券和基金”专题",
+    "url": "https://www.investor.org.cn/xxzx/tjzl/tjnrgmjytx/bk/kj/jyxl_3797/202311/P020231123531222554368.pdf",
+    "source_name": "中国投资者网",
+    "language": "zh",
+    "doc_type": "education_guide",
+    "published_at": "2023-11-23"
+  },
+  {
+    "doc_id": "zh_bond_investing_basics",
+    "title": "投资入市 应知应会——债券篇",
+    "url": "https://www.investor.org.cn/rdhd/515qgtzzbhxcr/2024/tjzphj_1/wz/zqqhjczspj/202405/P020240531373070834294.pdf",
+    "source_name": "中国投资者网",
+    "language": "zh",
+    "doc_type": "education_guide",
+    "published_at": "2024-05-31"
+  },
+  {
+    "doc_id": "zh_fund_newbie_guide",
+    "title": "〖权益360〗基金投资新手攻略（一）",
+    "url": "https://www.investor.org.cn/xxzx/tjzl/hzzl/szb/rights_and_interests360/202503/t20250314_801767.shtml",
+    "source_name": "中国投资者网",
+    "language": "zh",
+    "doc_type": "knowledge_article",
+    "published_at": "2025-03-13"
+  },
+  {
+    "doc_id": "zh_finance_literacy_basic_terms",
+    "title": "盛博士带你学金融——金融常识篇",
+    "url": "https://www.investor.org.cn/hdjl/tjzppx/dcjxtjhh/202504/P020250411655729003136.pdf",
+    "source_name": "中国投资者网",
+    "language": "zh",
+    "doc_type": "education_guide",
+    "published_at": "2025-04-07"
+  },
+  {
+    "doc_id": "zh_derivatives_basic_terms",
+    "title": "盛博士带你学金融——股指期货和股指期权篇",
+    "url": "https://www.investor.org.cn/hdjl/tjzppx/dcjxtjhh/202504/P020250411655730323426.pdf",
+    "source_name": "中国投资者网",
+    "language": "zh",
+    "doc_type": "education_guide",
+    "published_at": "2025-04-07"
+  },
+  {
     "doc_id": "tencent_2025_annual_report",
     "title": "腾讯 2025 年度报告",
     "url": "https://static.www.tencent.com/uploads/2026/04/09/5c38a9ec3c5695da42c1534d63e4be0b.pdf",
