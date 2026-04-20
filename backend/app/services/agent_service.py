@@ -352,7 +352,6 @@ class AgentService:
         )
         plan = self._normalize_plan(request.message, plan)
         plan = self.session_memory_service.fill_plan_from_memory(request.session_id, plan)
-        plan = self._inherit_time_range_from_memory(request, plan)
         trace_event("agent.plan", plan)
         return plan
 
@@ -360,8 +359,161 @@ class AgentService:
         related_answer = self.session_memory_service.get_related_answer(request.session_id, plan)
         tool_request = self._build_tool_request(request, plan, related_answer)
         answer = self.tool_executor.run(tool_request, plan)
+        upgraded_plan = self._build_web_retry_plan_if_needed(request, plan, answer)
+        if upgraded_plan is not None:
+            trace_event(
+                "agent.web_retry",
+                {
+                    "from_tool": plan.tool_name,
+                    "to_tool": upgraded_plan.tool_name,
+                    "reason": upgraded_plan.reason,
+                    "summary": answer.summary,
+                },
+            )
+            retry_request = self._build_tool_request(request, upgraded_plan, answer)
+            answer = self.tool_executor.run(retry_request, upgraded_plan)
+        else:
+            trace_event(
+                "agent.web_retry_skipped",
+                {
+                    "tool_name": plan.tool_name,
+                    "summary": answer.summary,
+                },
+            )
         trace_event("agent.tool_result", {"question_type": answer.question_type, "summary": answer.summary})
         return answer
+
+    def _build_web_retry_plan_if_needed(
+        self,
+        request: ChatRequest,
+        plan: AgentPlanningResult,
+        answer: AnswerPayload,
+    ) -> AgentPlanningResult | None:
+        if plan.tool_name == "finance_knowledge" and self._should_retry_finance_knowledge_with_web(request, plan, answer):
+            upgraded = plan.model_copy(deep=True)
+            upgraded.tool_name = "web_finance_knowledge"
+            upgraded.reason = "本地 RAG 未稳定命中问题核心术语，自动升级为网页检索。"
+            upgraded.thought = "本地知识库结果不足，改用网页检索补充定义。"
+            return upgraded
+
+        if plan.tool_name == "report_summary" and self._should_retry_report_summary_with_web(answer):
+            upgraded = plan.model_copy(deep=True)
+            upgraded.tool_name = "web_report_summary"
+            upgraded.reason = "本地 RAG 未稳定命中财报关键数字或表格，自动升级为网页检索。"
+            upgraded.thought = "本地财报结果不足，改用网页检索补充材料。"
+            return upgraded
+
+        return None
+
+    def _should_retry_finance_knowledge_with_web(
+        self,
+        request: ChatRequest,
+        plan: AgentPlanningResult,
+        answer: AnswerPayload,
+    ) -> bool:
+        source_mode = str(answer.objective_data.get("source_mode") or "").strip().lower()
+        if source_mode in {"web_fallback", "not_found"}:
+            return source_mode == "not_found"
+        if source_mode != "local_rag":
+            return False
+        if not answer.sources:
+            return True
+
+        matched_terms = answer.objective_data.get("matched_terms")
+        if isinstance(matched_terms, list) and any(str(item).strip() for item in matched_terms):
+            return False
+
+        summary_and_analysis = "\n".join([answer.summary, *answer.analysis]).lower()
+        if any(
+            signal in summary_and_analysis
+            for signal in [
+                "无法可靠回答",
+                "没有检索到足够依据",
+                "没有包含这一术语的解释",
+                "未命中",
+                "依据不足",
+            ]
+        ):
+            return True
+
+        focus_terms = self._extract_focus_terms(request.message, plan.rewritten_query, answer)
+        if not focus_terms:
+            return False
+        return not any(term in summary_and_analysis for term in focus_terms)
+
+    def _should_retry_report_summary_with_web(self, answer: AnswerPayload) -> bool:
+        source_mode = str(answer.objective_data.get("source_mode") or "").strip().lower()
+        if source_mode in {"web_fallback", "not_found"}:
+            return source_mode == "not_found"
+        if source_mode != "local_rag":
+            return False
+        if not answer.sources:
+            return True
+
+        metric_hits = answer.objective_data.get("metric_hits")
+        table_hits = answer.objective_data.get("table_hits")
+        if isinstance(metric_hits, int) and metric_hits > 0:
+            return False
+        if isinstance(table_hits, int) and table_hits > 0:
+            return False
+
+        summary_and_analysis = "\n".join([answer.summary, *answer.analysis]).lower()
+        return any(
+            signal in summary_and_analysis
+            for signal in [
+                "无法可靠总结",
+                "未稳定抽出足够数字",
+                "依据不足",
+            ]
+        )
+
+    def _extract_focus_terms(
+        self,
+        message: str,
+        rewritten_query: str | None,
+        answer: AnswerPayload,
+    ) -> list[str]:
+        candidates = [
+            message,
+            rewritten_query or "",
+            str(answer.request_message or ""),
+            str(answer.objective_data.get("retrieval_query") or ""),
+        ]
+        text = " ".join(part for part in candidates if part).lower()
+
+        english_terms = re.findall(r"[a-z]{2,}", text)
+        chinese_terms = re.findall(r"[\u4e00-\u9fff]{2,}", text)
+        stopwords = {
+            "what",
+            "mean",
+            "means",
+            "meaning",
+            "define",
+            "definition",
+            "finance",
+            "financial",
+            "asset",
+            "knowledge",
+            "of",
+            "is",
+            "metric",
+            "financial",
+            "什么是",
+            "是什么意思",
+            "定义",
+            "解释",
+            "一下",
+        }
+
+        focus_terms: list[str] = []
+        seen: set[str] = set()
+        for token in english_terms + chinese_terms:
+            normalized = token.strip().lower()
+            if len(normalized) < 2 or normalized in stopwords or normalized in seen:
+                continue
+            seen.add(normalized)
+            focus_terms.append(normalized)
+        return focus_terms[:6]
 
     def _render_final_text(self, request_message: str, plan: AgentPlanningResult, answer: AnswerPayload) -> str:
         question_type = answer.question_type.value if hasattr(answer.question_type, "value") else str(answer.question_type)
@@ -445,31 +597,6 @@ class AgentService:
             },
         )
         return tool_request
-
-    def _inherit_time_range_from_memory(self, request: ChatRequest, plan: AgentPlanningResult) -> AgentPlanningResult:
-        if self._message_has_explicit_time_range(request.message):
-            return plan
-
-        related_answer = self.session_memory_service.get_related_answer(request.session_id, plan)
-        if related_answer is None:
-            return plan
-
-        time_range_days = related_answer.objective_data.get("time_range_days")
-        if not isinstance(time_range_days, int) or time_range_days <= 0:
-            return plan
-
-        normalized = plan.model_copy(deep=True)
-        normalized.time_length = time_range_days
-        normalized.time_unit = "day"
-        if not normalized.reason:
-            normalized.reason = "后端一致性校验：当前问题未显式给出时间范围，继承上一轮时间窗口。"
-        return normalized
-
-    def _message_has_explicit_time_range(self, message: str) -> bool:
-        lowered = message.lower()
-        if re.search(r"\d+\s*(day|week|month|year|天|周|星期|个月|月|年)", lowered):
-            return True
-        return any(token in lowered for token in ["最近一年", "最近一月", "最近一个月", "最近一周", "最近一天", "过去", "近年", "近月", "近周", "近天"])
 
     def _sanitize_final_text(self, text: str, answer: AnswerPayload) -> str:
         cleaned = text.strip()

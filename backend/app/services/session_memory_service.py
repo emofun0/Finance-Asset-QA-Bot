@@ -88,12 +88,6 @@ class SessionMemoryService:
 
         normalized = plan.model_copy(deep=True)
         normalized = self._fill_subject_fields(normalized, memory)
-        if normalized.time_length is None:
-            related_answer = self.get_related_answer(session_id, normalized)
-            time_range_days = self._extract_time_range_days(related_answer)
-            if time_range_days is not None:
-                normalized.time_length = time_range_days
-                normalized.time_unit = "day"
         return normalized
 
     def fill_subject_from_memory(self, session_id: str | None, plan: AgentPlanningResult) -> AgentPlanningResult:
@@ -121,14 +115,6 @@ class SessionMemoryService:
             if target_company and answer_company == target_company:
                 return answer
         return memory.recent_answers[-1] if memory.recent_answers else None
-
-    def _extract_time_range_days(self, answer: AnswerPayload | None) -> int | None:
-        if answer is None:
-            return None
-        value = answer.objective_data.get("time_range_days")
-        if isinstance(value, int) and value > 0:
-            return value
-        return None
 
     def _build_cache_key(self, plan: AgentPlanningResult) -> str:
         query_signature = self._build_query_signature(plan)
