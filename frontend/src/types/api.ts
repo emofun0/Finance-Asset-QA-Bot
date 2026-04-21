@@ -115,9 +115,7 @@ export interface ChatResponse {
 
 export type ChatStreamEvent =
   | { type: "meta"; request_id: string }
-  | { type: "status"; text: string }
-  | { type: "thought"; text: string; tool_name?: string }
-  | { type: "tool"; tool_name: string; summary: string }
+  | { type: "agent"; text: string }
   | { type: "delta"; text: string }
   | { type: "done"; request_id: string; message: ChatMessagePayload }
   | { type: "error"; request_id: string; code: string; message: string; details?: Record<string, unknown> | null };

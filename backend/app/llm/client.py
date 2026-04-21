@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 import json
-from typing import Iterator, TypeVar
+from typing import Any, Iterator, TypeVar
 
 import requests
 from pydantic import BaseModel
@@ -17,6 +18,27 @@ except ImportError:  # pragma: no cover - optional dependency at runtime
 
 
 TModel = TypeVar("TModel", bound=BaseModel)
+
+
+@dataclass(frozen=True)
+class AgentToolDefinition:
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class AgentToolCall:
+    id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class AgentToolTurn:
+    text: str
+    tool_calls: list[AgentToolCall]
+    assistant_message: dict[str, Any]
 
 
 class BaseLLMClient(ABC):
@@ -43,6 +65,16 @@ class BaseLLMClient(ABC):
     ) -> Iterator[str]:
         raise NotImplementedError
 
+    @abstractmethod
+    def generate_tool_turn(
+        self,
+        *,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+        tools: list[AgentToolDefinition],
+    ) -> AgentToolTurn:
+        raise NotImplementedError
+
 
 class NullLLMClient(BaseLLMClient):
     def is_enabled(self) -> bool:
@@ -63,6 +95,15 @@ class NullLLMClient(BaseLLMClient):
         system_prompt: str,
         user_prompt: str,
     ) -> Iterator[str]:
+        raise RuntimeError("LLM client is not enabled.")
+
+    def generate_tool_turn(
+        self,
+        *,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+        tools: list[AgentToolDefinition],
+    ) -> AgentToolTurn:
         raise RuntimeError("LLM client is not enabled.")
 
 
@@ -135,6 +176,36 @@ class OllamaLLMClient(BaseLLMClient):
                 content = str(message.get("content") or "")
                 if content:
                     yield content
+
+    def generate_tool_turn(
+        self,
+        *,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+        tools: list[AgentToolDefinition],
+    ) -> AgentToolTurn:
+        response = requests.post(
+            f"{self.base_url}/api/chat",
+            json={
+                "model": self.model,
+                "stream": False,
+                "messages": [{"role": "system", "content": system_prompt}, *messages],
+                "tools": _build_openai_tool_payload(tools),
+                "options": {"temperature": 0},
+            },
+            timeout=self.timeout_seconds,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        message = payload.get("message") or {}
+        return AgentToolTurn(
+            text=str(message.get("content") or "").strip(),
+            tool_calls=_parse_ollama_tool_calls(message.get("tool_calls") or []),
+            assistant_message=_normalize_assistant_message(
+                content=message.get("content"),
+                tool_calls=message.get("tool_calls") or [],
+            ),
+        )
 
 
 class OpenAILLMClient(BaseLLMClient):
@@ -227,6 +298,55 @@ class OpenAILLMClient(BaseLLMClient):
                     if delta:
                         yield delta
 
+    def generate_tool_turn(
+        self,
+        *,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+        tools: list[AgentToolDefinition],
+    ) -> AgentToolTurn:
+        if self._client is None:
+            raise RuntimeError("OpenAI client is not configured.")
+
+        response = self._client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "system", "content": system_prompt}, *messages],
+            tools=_build_openai_tool_payload(tools),
+            tool_choice="auto",
+            temperature=0,
+        )
+        message = response.choices[0].message
+        tool_calls = []
+        normalized_calls: list[dict[str, Any]] = []
+        for item in message.tool_calls or []:
+            arguments = _safe_json_loads(item.function.arguments or "{}")
+            tool_calls.append(
+                AgentToolCall(
+                    id=item.id,
+                    name=item.function.name,
+                    arguments=arguments if isinstance(arguments, dict) else {},
+                )
+            )
+            normalized_calls.append(
+                {
+                    "id": item.id,
+                    "type": "function",
+                    "function": {
+                        "name": item.function.name,
+                        "arguments": item.function.arguments or "{}",
+                    },
+                }
+            )
+
+        return AgentToolTurn(
+            text=str(message.content or "").strip(),
+            tool_calls=tool_calls,
+            assistant_message=_normalize_assistant_message(
+                content=message.content,
+                tool_calls=normalized_calls,
+            ),
+        )
+
 
 def build_llm_client(provider: str | None = None, model: str | None = None) -> BaseLLMClient:
     selected_provider = (provider or settings.llm_provider).lower()
@@ -248,3 +368,56 @@ def build_llm_client(provider: str | None = None, model: str | None = None) -> B
         )
 
     return NullLLMClient()
+
+
+def _build_openai_tool_payload(tools: list[AgentToolDefinition]) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.input_schema,
+            },
+        }
+        for tool in tools
+    ]
+
+
+def _parse_ollama_tool_calls(raw_tool_calls: list[dict[str, Any]]) -> list[AgentToolCall]:
+    tool_calls: list[AgentToolCall] = []
+    for index, item in enumerate(raw_tool_calls):
+        function_payload = item.get("function") or {}
+        raw_arguments = function_payload.get("arguments") or {}
+        if isinstance(raw_arguments, str):
+            parsed_arguments = _safe_json_loads(raw_arguments)
+            arguments = parsed_arguments if isinstance(parsed_arguments, dict) else {}
+        elif isinstance(raw_arguments, dict):
+            arguments = raw_arguments
+        else:
+            arguments = {}
+        tool_calls.append(
+            AgentToolCall(
+                id=str(item.get("id") or f"ollama-tool-{index}"),
+                name=str(function_payload.get("name") or ""),
+                arguments=arguments,
+            )
+        )
+    return tool_calls
+
+
+def _normalize_assistant_message(content: Any, tool_calls: list[dict[str, Any]]) -> dict[str, Any]:
+    message: dict[str, Any] = {
+        "role": "assistant",
+        "content": str(content or ""),
+    }
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+    return message
+
+
+def _safe_json_loads(value: str) -> Any:
+    try:
+        return json.loads(value)
+    except Exception:
+        return {}

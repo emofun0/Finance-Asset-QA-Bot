@@ -239,28 +239,10 @@ function App() {
               return;
             }
 
-            if (event.type === "status") {
+            if (event.type === "agent") {
               updateAssistantMessage(assistantMessageId, (current) => ({
                 ...current,
-                text: event.text,
-                transient: true,
-              }));
-              return;
-            }
-
-            if (event.type === "thought") {
-              updateAssistantMessage(assistantMessageId, (current) => ({
-                ...current,
-                text: `正在思考：${event.text}`,
-                transient: true,
-              }));
-              return;
-            }
-
-            if (event.type === "tool") {
-              updateAssistantMessage(assistantMessageId, (current) => ({
-                ...current,
-                text: `正在执行：${event.tool_name}\n${event.summary}`,
+                text: current.text ? `${current.text}\n\n${event.text}` : event.text,
                 transient: true,
               }));
               return;

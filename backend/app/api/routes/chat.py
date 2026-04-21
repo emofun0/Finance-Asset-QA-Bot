@@ -107,16 +107,8 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
             try:
                 final_message_payload: dict | None = None
                 for event in stream_events:
-                    if event.type == "status":
-                        yield _sse("status", event.payload)
-                        await asyncio.sleep(0.01)
-                        continue
-                    if event.type == "thought":
-                        yield _sse("thought", event.payload)
-                        await asyncio.sleep(0.01)
-                        continue
-                    if event.type == "tool":
-                        yield _sse("tool", event.payload)
+                    if event.type == "agent":
+                        yield _sse("agent", event.payload)
                         await asyncio.sleep(0.01)
                         continue
                     if event.type == "final":

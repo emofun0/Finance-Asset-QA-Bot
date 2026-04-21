@@ -1,22 +1,23 @@
 from __future__ import annotations
 
-from app.core.company_catalog import find_company_profile
 from dataclasses import dataclass, field
-import re
 from threading import RLock
 
-from app.llm.contracts import AgentPlanningResult
 from app.schemas.response import AnswerPayload
 
 
 @dataclass
+class CompressedTurn:
+    user_text: str
+    assistant_text: str
+    tool_notes: list[str] = field(default_factory=list)
+
+
+@dataclass
 class SessionMemory:
-    last_company: str | None = None
-    last_symbol: str | None = None
-    last_question_type: str | None = None
-    recent_summaries: list[str] = field(default_factory=list)
-    recent_answers: list[AnswerPayload] = field(default_factory=list)
-    cached_answers: dict[str, AnswerPayload] = field(default_factory=dict)
+    summary_lines: list[str] = field(default_factory=list)
+    recent_turns: list[CompressedTurn] = field(default_factory=list)
+    last_answer: AnswerPayload | None = None
 
 
 class SessionMemoryService:
@@ -42,131 +43,69 @@ class SessionMemoryService:
         with self._lock:
             return self._sessions.pop(session_id, None) is not None
 
-    def describe_context(self, session_id: str | None) -> str:
+    def build_context_messages(self, session_id: str | None) -> list[dict[str, str]]:
         memory = self.get(session_id)
         if memory is None:
-            return ""
+            return []
 
-        parts: list[str] = []
-        if memory.last_company or memory.last_symbol:
-            subject = f"{memory.last_company or ''} {memory.last_symbol or ''}".strip()
-            if subject:
-                parts.append(f"上一轮主要资产：{subject}")
-        if memory.last_question_type:
-            parts.append(f"上一轮问题类型：{memory.last_question_type}")
-        if memory.recent_summaries:
-            parts.append("最近工具结果摘要：")
-            parts.extend(f"- {item}" for item in memory.recent_summaries[-2:])
-        return "\n".join(parts).strip()
+        messages: list[dict[str, str]] = []
+        summary_text = self._build_summary_text(memory)
+        if summary_text:
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": summary_text,
+                }
+            )
 
-    def get_cached_answer(self, session_id: str | None, plan: AgentPlanningResult) -> AnswerPayload | None:
-        memory = self.get(session_id)
-        if memory is None:
-            return None
-        return memory.cached_answers.get(self._build_cache_key(plan))
+        for turn in memory.recent_turns:
+            messages.append({"role": "user", "content": turn.user_text})
+            assistant_parts = [turn.assistant_text]
+            if turn.tool_notes:
+                assistant_parts.append("当时保留的工具线索：\n" + "\n".join(f"- {item}" for item in turn.tool_notes[:3]))
+            messages.append({"role": "assistant", "content": "\n\n".join(part for part in assistant_parts if part).strip()})
+        return messages
 
-    def remember(self, session_id: str | None, plan: AgentPlanningResult, answer: AnswerPayload) -> None:
+    def remember(
+        self,
+        session_id: str | None,
+        *,
+        user_message: str,
+        answer: AnswerPayload,
+        tool_notes: list[str],
+    ) -> None:
         memory = self.get_or_create(session_id)
         if memory is None:
             return
 
-        memory.last_company = answer.route.extracted_company or plan.company or memory.last_company
-        memory.last_symbol = answer.route.extracted_symbol or plan.symbol or memory.last_symbol
-        question_type = answer.question_type.value if hasattr(answer.question_type, "value") else str(answer.question_type)
-        memory.last_question_type = question_type
-        if answer.summary:
-            memory.recent_summaries.append(answer.summary.strip())
-            memory.recent_summaries = memory.recent_summaries[-4:]
-        memory.recent_answers.append(answer)
-        memory.recent_answers = memory.recent_answers[-4:]
-        memory.cached_answers[self._build_cache_key(plan)] = answer
-
-    def fill_plan_from_memory(self, session_id: str | None, plan: AgentPlanningResult) -> AgentPlanningResult:
-        memory = self.get(session_id)
-        if memory is None:
-            return plan
-
-        normalized = plan.model_copy(deep=True)
-        normalized = self._fill_subject_fields(normalized, memory)
-        return normalized
-
-    def fill_subject_from_memory(self, session_id: str | None, plan: AgentPlanningResult) -> AgentPlanningResult:
-        return self.fill_plan_from_memory(session_id, plan)
-
-    def get_related_answer(self, session_id: str | None, plan: AgentPlanningResult) -> AnswerPayload | None:
-        memory = self.get(session_id)
-        if memory is None:
-            return None
-
-        company, symbol = self._resolve_subject(plan.company, plan.symbol)
-        target_company = (company or "").strip().lower()
-        target_symbol = (symbol or "").strip().lower()
-        if not target_company and not target_symbol:
-            target_company = (memory.last_company or "").strip().lower()
-            target_symbol = (memory.last_symbol or "").strip().lower()
-        if not target_company and not target_symbol:
-            return memory.recent_answers[-1] if memory.recent_answers else None
-
-        for answer in reversed(memory.recent_answers):
-            answer_company = (answer.route.extracted_company or "").strip().lower()
-            answer_symbol = (answer.route.extracted_symbol or "").strip().lower()
-            if target_symbol and answer_symbol == target_symbol:
-                return answer
-            if target_company and answer_company == target_company:
-                return answer
-        return memory.recent_answers[-1] if memory.recent_answers else None
-
-    def _build_cache_key(self, plan: AgentPlanningResult) -> str:
-        query_signature = self._build_query_signature(plan)
-        return "|".join(
-            [
-                plan.tool_name,
-                (plan.company or "").strip().lower(),
-                (plan.symbol or "").strip().lower(),
-                str(plan.time_length or ""),
-                str(plan.time_unit or ""),
-                str(plan.event_date or ""),
-                query_signature,
-            ]
+        turn = CompressedTurn(
+            user_text=self._trim(user_message, 220),
+            assistant_text=self._trim(answer.summary, 320),
+            tool_notes=[self._trim(item, 180) for item in tool_notes if item.strip()][:3],
         )
+        memory.recent_turns.append(turn)
+        memory.last_answer = answer
 
-    def _build_query_signature(self, plan: AgentPlanningResult) -> str:
-        candidates = [
-            plan.rewritten_query,
-            plan.direct_response,
-            plan.reason,
-            plan.thought,
-        ]
-        for candidate in candidates:
-            normalized = self._normalize_text(candidate)
-            if normalized:
-                return normalized
-        return ""
+        while len(memory.recent_turns) > 2:
+            archived = memory.recent_turns.pop(0)
+            memory.summary_lines.append(self._turn_to_summary_line(archived))
+        memory.summary_lines = memory.summary_lines[-8:]
 
-    def _normalize_text(self, value: str | None) -> str:
-        if not value:
-            return ""
-        collapsed = re.sub(r"\s+", " ", value).strip().lower()
-        return collapsed[:160]
+    def _build_summary_text(self, memory: SessionMemory) -> str:
+        parts: list[str] = []
+        if memory.summary_lines:
+            parts.append("以下是此前会话的压缩记忆，仅用于延续上下文：")
+            parts.extend(f"- {item}" for item in memory.summary_lines[-8:])
+        return "\n".join(parts).strip()
 
-    def _fill_subject_fields(self, plan: AgentPlanningResult, memory: SessionMemory) -> AgentPlanningResult:
-        normalized = plan.model_copy(deep=True)
-        company, symbol = self._resolve_subject(normalized.company, normalized.symbol)
+    def _turn_to_summary_line(self, turn: CompressedTurn) -> str:
+        tool_text = ""
+        if turn.tool_notes:
+            tool_text = f"；工具线索：{'；'.join(turn.tool_notes[:2])}"
+        return f"用户问：{self._trim(turn.user_text, 80)}；回答结论：{self._trim(turn.assistant_text, 100)}{tool_text}"
 
-        if company or symbol:
-            normalized.company = company
-            normalized.symbol = symbol
+    def _trim(self, value: str, limit: int) -> str:
+        normalized = " ".join(str(value or "").split()).strip()
+        if len(normalized) <= limit:
             return normalized
-
-        normalized.company = memory.last_company
-        normalized.symbol = memory.last_symbol
-        return normalized
-
-    def _resolve_subject(self, company: str | None, symbol: str | None) -> tuple[str | None, str | None]:
-        profile = find_company_profile(company=company, symbol=symbol)
-        if profile is not None:
-            return profile.canonical_name, profile.symbol
-
-        normalized_company = company.strip() if company else None
-        normalized_symbol = symbol.strip() if symbol else None
-        return normalized_company, normalized_symbol
+        return normalized[: max(limit - 1, 0)].rstrip() + "…"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from app.llm.contracts import AgentPlanningResult, EventObservationResult
+from app.llm.contracts import EventObservationResult
 from app.schemas.domain import RouteDecision
 from app.schemas.response import AnswerPayload
 
@@ -97,67 +97,6 @@ def build_verification_prompt(answer_payload: AnswerPayload) -> tuple[str, str]:
         "字段要求：is_valid, issues, corrected_summary, corrected_analysis, corrected_limitations。\n"
         "如果回答属于知识问答或财报摘要，且 source_mode=not_found 或 sources 为空，应判定为未通过，并改写成依据不足的保守回答。\n"
         f"回答：{json.dumps(answer_payload.model_dump(mode='json'), ensure_ascii=False, indent=2)}\n"
-    )
-    return system_prompt, user_prompt
-
-
-def build_agent_planning_prompt(message: str, conversation_context: str | None = None) -> tuple[str, str]:
-    system_prompt = (
-        "你是金融问答系统中的智能代理规划器。"
-        "你必须先判断用户问题最适合调用哪个工具，再给出保守、可执行的参数。"
-        "不要编造不存在的公司、股票代码、日期或财报。"
-        "如果用户只写中文公司名、简称、口语表达或模糊表述，你要把 rewritten_query 补成正式可检索表达，包括中文原词、官方英文公司名、主股票代码、报告类型、时间范围和关键指标。"
-        "rewritten_query 默认应同时保留中文和英文检索词，不要只写英文。中文术语、中文公司名、中文报告类型要尽量保留。"
-        "不要依赖任何别名映射表，不要输出 alias，不要把中文别名原样当成唯一检索键。"
-        "如果问题信息不足、超出系统范围，使用 direct_response。"
-    )
-    schema_json = json.dumps(AgentPlanningResult.model_json_schema(), ensure_ascii=False)
-    user_prompt = (
-        "请根据用户问题输出结构化 JSON。\n"
-        "可用 tool_name：asset_price, asset_trend, asset_event_analysis, finance_knowledge, web_finance_knowledge, report_summary, web_report_summary, direct_response。\n"
-        "规划原则：\n"
-        "1. 价格/走势/事件归因属于市场数据工具。\n"
-        "1.1 只要用户在追问价格变化原因、下跌原因、上涨原因、为什么跌、为什么涨、受什么影响，就优先使用 asset_event_analysis，而不是 asset_trend。\n"
-        "1.2 如果用户是在承接上一轮语境做省略式追问，例如“最近半年呢”“那最近一年呢”“近三个月呢”，你仍然必须把 time_length 和 time_unit 明确填出来，不能留空。\n"
-        "2. 概念解释、公司披露、财报摘要优先使用本地 RAG：finance_knowledge / report_summary。\n"
-        "3. 只有在用户明确表示本地检索不对、要联网搜、要官网/新闻来源，或会话上下文显示上一轮 RAG 证据不足时，才使用 web_finance_knowledge / web_report_summary。\n"
-        "4. rewritten_query 必须写成真正可检索的查询，默认同时包含中文和英文检索词；优先补上中文原词、官方英文公司名、主股票代码、报告类型、常见英文术语、关键财务指标。\n"
-        "4.1 如果用户问题本身是中文，rewritten_query 里不能把中文全部丢掉；至少要保留关键中文术语、中文公司名或中文报告类型。\n"
-        "5. thought 要简短准确，不要输出长链路推理。\n"
-        "6. 日期用 ISO 格式，如 2026-01-15；不确定时留空。\n"
-        "7. 涉及时间范围时，不要换算成天数；请填写 time_length 和 time_unit，例如最近三年 => time_length=3, time_unit=year。\n"
-        "8. time_unit 只能是 day, week, month, year 之一；没有明确时间时可留空。\n"
-        "few-shot 参考：\n"
-        "用户：阿里巴巴最近半年股价怎么样\n"
-        "输出：{\"tool_name\":\"asset_trend\",\"thought\":\"查询 Alibaba 过去半年的股价趋势。\",\"company\":\"Alibaba\",\"symbol\":\"BABA\",\"time_length\":6,\"time_unit\":\"month\",\"event_date\":null,\"rewritten_query\":null,\"direct_response\":null,\"reason\":\"用户在问特定资产的区间走势。\"}\n"
-        "会话上下文：\n上一轮主要资产：Alibaba BABA\n上一轮问题类型：asset_trend\n最近工具结果摘要：\n- BABA 最近 30 天整体上涨，区间涨跌幅约 4.89%。\n"
-        "用户：最近半年呢\n"
-        "输出：{\"tool_name\":\"asset_trend\",\"thought\":\"结合会话上下文，查询 BABA 过去半年的股价趋势。\",\"company\":\"Alibaba\",\"symbol\":\"BABA\",\"time_length\":6,\"time_unit\":\"month\",\"event_date\":null,\"rewritten_query\":null,\"direct_response\":null,\"reason\":\"用户在延续上一轮资产语境追问半年走势，时间范围必须显式填为半年。\"}\n"
-        "会话上下文：\n上一轮主要资产：Alibaba BABA\n上一轮问题类型：asset_trend\n最近工具结果摘要：\n- BABA 最近 30 天整体上涨，区间涨跌幅约 4.89%。\n"
-        "用户：那最近一年呢\n"
-        "输出：{\"tool_name\":\"asset_trend\",\"thought\":\"结合会话上下文，查询 BABA 过去一年的股价趋势。\",\"company\":\"Alibaba\",\"symbol\":\"BABA\",\"time_length\":1,\"time_unit\":\"year\",\"event_date\":null,\"rewritten_query\":null,\"direct_response\":null,\"reason\":\"用户在延续上一轮资产语境追问一年走势，时间范围必须显式填为一年。\"}\n"
-        "用户：阿里巴巴最近半年为什么下跌\n"
-        "输出：{\"tool_name\":\"asset_event_analysis\",\"thought\":\"查询 Alibaba 最近半年的价格异动并分析下跌原因。\",\"company\":\"Alibaba\",\"symbol\":\"BABA\",\"time_length\":6,\"time_unit\":\"month\",\"event_date\":null,\"rewritten_query\":null,\"direct_response\":null,\"reason\":\"用户在追问区间内价格下跌原因，应走事件归因链路。\"}\n"
-        "用户：为什么最近半年下跌\n"
-        "输出：{\"tool_name\":\"asset_event_analysis\",\"thought\":\"结合会话上下文中的目标资产，分析最近半年的下跌原因。\",\"company\":\"Alibaba\",\"symbol\":\"BABA\",\"time_length\":6,\"time_unit\":\"month\",\"event_date\":null,\"rewritten_query\":null,\"direct_response\":null,\"reason\":\"问题承接上一轮资产语境，当前在追问下跌原因，应走事件归因。\"}\n"
-        "用户：腾讯最近一个月为什么涨这么多\n"
-        "输出：{\"tool_name\":\"asset_event_analysis\",\"thought\":\"查询 Tencent 最近一个月的价格异动并分析上涨原因。\",\"company\":\"Tencent\",\"symbol\":\"0700.HK\",\"time_length\":1,\"time_unit\":\"month\",\"event_date\":null,\"rewritten_query\":null,\"direct_response\":null,\"reason\":\"用户关注上涨原因，不只是走势描述。\"}\n"
-        "用户：什么是纳斯达克\n"
-        "输出：{\"tool_name\":\"finance_knowledge\",\"thought\":\"先用本地知识库检索纳斯达克定义。\",\"company\":null,\"symbol\":null,\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"纳斯达克 Nasdaq Composite index definition stock exchange meaning 定义\",\"direct_response\":null,\"reason\":\"概念解释问题先走 RAG。\"}\n"
-        "用户：上一个解释不对，去网上搜纳斯达克官方定义\n"
-        "输出：{\"tool_name\":\"web_finance_knowledge\",\"thought\":\"改用网页检索查找更可靠的官方定义。\",\"company\":null,\"symbol\":null,\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"纳斯达克 Nasdaq official definition stock exchange index glossary 官方定义\",\"direct_response\":null,\"reason\":\"用户明确要求联网检索并对上一轮本地结果不满意。\"}\n"
-        "用户：总结一下腾讯最新季度财报\n"
-        "输出：{\"tool_name\":\"report_summary\",\"thought\":\"先检索 Tencent 最近季度财报材料并提炼摘要。\",\"company\":\"Tencent\",\"symbol\":\"0700.HK\",\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"腾讯 Tencent 0700.HK 最新季度财报 latest quarterly results earnings release quarterly presentation\",\"direct_response\":null,\"reason\":\"财报摘要优先本地披露材料。\"}\n"
-        "用户：阿里这季营收和经调整 EBITA 怎么样\n"
-        "输出：{\"tool_name\":\"report_summary\",\"thought\":\"先检索 Alibaba 最近季度财报中的营收和经调整 EBITA。\",\"company\":\"Alibaba\",\"symbol\":\"BABA\",\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"阿里巴巴 Alibaba BABA 这季营收 经调整 EBITA 最新季度财报 latest quarterly results revenue adjusted EBITA customer management cloud intelligence\",\"direct_response\":null,\"reason\":\"用户在问公司季度财报中的具体指标。\"}\n"
-        "用户：腾讯年报里游戏和广告的收入表格给我看一下\n"
-        "输出：{\"tool_name\":\"report_summary\",\"thought\":\"先检索 Tencent 年报中的分部收入表格。\",\"company\":\"Tencent\",\"symbol\":\"0700.HK\",\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"腾讯 Tencent 0700.HK 年报 游戏 广告 收入表格 annual report segment revenue table gaming advertising online advertising\",\"direct_response\":null,\"reason\":\"用户需要财报中的表格和具体数字。\"}\n"
-        "用户：本地财报搜得不对，去官网找腾讯最新财报\n"
-        "输出：{\"tool_name\":\"web_report_summary\",\"thought\":\"改用官网网页检索寻找最新财报材料。\",\"company\":\"Tencent\",\"symbol\":\"0700.HK\",\"time_length\":null,\"time_unit\":null,\"event_date\":null,\"rewritten_query\":\"腾讯 Tencent 0700.HK 最新财报 latest quarterly results investor relations official 官网\",\"direct_response\":null,\"reason\":\"用户明确要求网页/官网 fallback。\"}\n"
-        + (f"会话上下文：\n{conversation_context}\n" if conversation_context else "")
-        + f"用户问题：{message}\n"
-        "请严格输出 JSON，禁止附加说明。JSON Schema 如下：\n"
-        f"{schema_json}"
     )
     return system_prompt, user_prompt
 
