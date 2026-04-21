@@ -1,0 +1,4 @@
+interface:
+  display_name: "Check Log"
+  short_description: "按 session id 查看 trace 对话日志"
+  default_prompt: "Use $check-log to inspect all trace JSON files for a given session id in this project."
